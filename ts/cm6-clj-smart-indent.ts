@@ -1,8 +1,8 @@
+import type { SyntaxNode } from "@lezer/common"
+import { IndentContext } from "@codemirror/language"
 import { EditorState } from "@codemirror/state"
 import type { Extension, Facet } from "@codemirror/state"
-import { syntaxTree, IndentContext } from "@codemirror/language"
-import type { SyntaxNode } from "@lezer/common"
-import { props } from "@nextjournal/lezer-clojure" // skipLibCheck to work around incomplete, inconsistent declaration
+import {parser, props} from "@nextjournal/lezer-clojure" // skipLibCheck to work around incomplete, inconsistent declaration
 const {coll} = props
 
 function nodeText(state: EditorState, node: SyntaxNode) {
@@ -31,39 +31,35 @@ const haveBodyParameter = [
 const hasBodyParameter = createLookupMap(haveBodyParameter)
 
 function nextNodeOnSameLine(state: EditorState, node: SyntaxNode) {
-  const line = state.doc.lineAt(node.from);
-  let nextNode = node.nextSibling;
+  const line = state.doc.lineAt(node.from)
+  let nextNode = node.nextSibling
   while (nextNode && nextNode.type.isSkipped && nextNode.to < line.to) {
-     nextNode = nextNode.nextSibling;
+     nextNode = nextNode.nextSibling
   }
   if (nextNode && !nextNode.type.isSkipped && nextNode.to < line.to) {
-    return nextNode;
+    return nextNode
   }
 }
 
 function clojureSmartIndent(context: IndentContext, pos: number): number {
-  console.log("clojureSmartIndent invoked")
-  const { state } = context
-  const tree = syntaxTree(state)
-  const node = tree.resolveInner(pos, -1)
-  console.log(node)
-  console.log(node.type.prop(coll), "...", node.firstChild)
-  if (node.type.prop(coll) && node.firstChild) {
-    const parentBase = context.column(node.firstChild.to) // column at the right of parent opening-(
-    console.log("clojureSmartIndent:parentBase=" + parentBase + ", pos=" + pos)
-    const startSymbolNode = node.firstChild.nextSibling
-    if ("List" == node.name && startSymbolNode) {
-      if (hasBodyParameter[(nodeText(state, startSymbolNode))]) {
-        return parentBase + 1
+  const tree = parser.parse(context.state.doc.toString())
+  if (tree) {
+    const node = tree.resolve(pos, 0)
+    if (node.type.prop(coll) && node.firstChild) {
+      const parentBase = context.column(node.firstChild.to)
+      const startSymbolNode = node.firstChild.nextSibling
+      if ("List" == node.type.name && startSymbolNode) {
+        if (hasBodyParameter[(nodeText(context.state, startSymbolNode))]) {
+          return parentBase + 1
+        }
+        const nextNode = nextNodeOnSameLine(context.state, startSymbolNode)
+        if (nextNode) {
+          return context.column(nextNode.from)
+        }
       }
-      const nextNode = nextNodeOnSameLine(state, startSymbolNode)
-      if (nextNode) {
-        return context.column(nextNode.from)
-      }
+      return parentBase
     }
-    return parentBase
   }
-  console.log("returning 0")
   return 0
 }
 
@@ -73,6 +69,5 @@ function clojureSmartIndent(context: IndentContext, pos: number): number {
  * @returns the CodeMirror6 Clojure Smart Indent extension in the form of an array of extensions
  */
 export function clojureSmartIndentExtension(indentService: Facet<(context: IndentContext, pos: number) => number | null | undefined>): Extension {
-  console.log("init clojureSmartIndentExtension")
   return indentService.of(clojureSmartIndent)
 }
