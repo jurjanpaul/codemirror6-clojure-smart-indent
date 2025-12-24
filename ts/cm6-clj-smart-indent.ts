@@ -205,13 +205,13 @@ function getTopLevelIndentation(prefix: string): string {
 }
 
 export function calculateIndentation(prefix: string): string {
-  const parseState = getParseState(prefix, prefix.length);
-  if (parseState.inString) {
-      return "";
-  }
   const lastNewlineIdx = prefix.lastIndexOf("\n");
   const lastLine = prefix.slice(lastNewlineIdx + 1);
-  if (lastLine.trim() === "" && lastNewlineIdx !== -1) {
+  if (lastNewlineIdx !== -1 && lastLine.trim() === "") {
+    return "";
+  }
+  const parseState = getParseState(prefix, prefix.length);
+  if (parseState.inString) {
       return "";
   }
   const openParenIdx = findOpenDelimiter(prefix);
