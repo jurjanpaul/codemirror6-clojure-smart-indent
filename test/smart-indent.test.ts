@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { clojureSmartIndent } from "../ts/clojure-smart-indent.js";
+import { clojureSmartIndent } from "../ts/cm6-clj-smart-indent.js";
 
 function parse(input: string) {
   const cursor = input.indexOf("|");
@@ -124,6 +124,18 @@ describe("Clojure Smart Indent", () => {
 `(let [x 1]
 
 |`
+    );
+  });
+
+  it("should never indent after a line with only whitespace", () => {
+    assertSmartIndent(
+`(let [x 1]
+
+
+|`,
+`(let [x 1]
+
+       |`
     );
   });
 });
