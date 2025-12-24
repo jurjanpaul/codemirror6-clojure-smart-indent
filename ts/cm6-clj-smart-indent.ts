@@ -47,25 +47,6 @@ export function clojureSmartIndent(buffer: string, cursor: number): IndentResult
   };
 }
 
-function getLineAt(text: string, index: number): string {
-  const start = text.lastIndexOf("\n", index - 1) + 1;
-  const end = text.indexOf("\n", index);
-  return text.slice(start, end === -1 ? text.length : end);
-}
-
-function getIndentation(line: string): string {
-  const match = line.match(/^[ \t]*/);
-  return match ? match[0] : "";
-}
-
-function isOpeningDelimiter(char: string): boolean {
-  return char === '(' || char === '[' || char === '{';
-}
-
-function isClosingDelimiter(char: string): boolean {
-  return char === ')' || char === ']' || char === '}';
-}
-
 function getColumn(text: string, index: number): number {
   const lastNewline = text.lastIndexOf("\n", index);
   return index - (lastNewline === -1 ? 0 : lastNewline + 1);
@@ -107,35 +88,62 @@ function isInCommentOrString(text: string, index: number): boolean {
   return state.inString || state.inComment;
 }
 
-function findBackwards(text: string, index: number, initialDepth: number, stopFn: (char: string, depth: number) => boolean): number {
-  let i = index;
-  let depth = initialDepth;
+function isOpeningDelimiter(char: string): boolean {
+  return char === '(' || char === '[' || char === '{';
+}
+
+function isClosingDelimiter(char: string): boolean {
+  return char === ')' || char === ']' || char === '}';
+}
+
+function findOpenDelimiter(prefix: string): number {
+  let i = prefix.length - 1;
+  let depth = 0;
 
   while (i >= 0) {
-    if (isInCommentOrString(text, i)) {
+    const char = prefix[i];
+
+    if (isInCommentOrString(prefix, i)) {
       i--;
       continue;
     }
-    const char = text[i];
-    if (isOpeningDelimiter(char)) {
-      if (stopFn(char, depth)) return i;
-      depth--;
-    } else if (isClosingDelimiter(char)) {
+
+    if (isClosingDelimiter(char)) {
       depth++;
-    } else {
-      if (stopFn(char, depth)) return i;
+    } else if (isOpeningDelimiter(char)) {
+      if (depth === 0) {
+        return i;
+      }
+      depth--;
     }
     i--;
   }
   return -1;
 }
 
-function findOpenDelimiter(prefix: string): number {
-  return findBackwards(prefix, prefix.length - 1, 0, (char, depth) => depth === 0 && isOpeningDelimiter(char));
-}
-
 function findMatchingOpener(prefix: string, closeIdx: number): number {
-  return findBackwards(prefix, closeIdx - 1, 1, (char, depth) => depth === 1 && isOpeningDelimiter(char));
+  let i = closeIdx - 1;
+  let depth = 1;
+
+  while (i >= 0) {
+    const char = prefix[i];
+
+    if (isInCommentOrString(prefix, i)) {
+      i--;
+      continue;
+    }
+
+    if (isClosingDelimiter(char)) {
+      depth++;
+    } else if (isOpeningDelimiter(char)) {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+    }
+    i--;
+  }
+  return -1;
 }
 
 function getListIndentation(prefix: string, openParenIdx: number): string {
@@ -145,7 +153,9 @@ function getListIndentation(prefix: string, openParenIdx: number): string {
 
   if (match) {
     const functionName = match[1];
-    if (BODY_FORMS.has(functionName)) return " ".repeat(openCol + 2);
+    if (BODY_FORMS.has(functionName)) {
+      return " ".repeat(openCol + 2);
+    }
 
     const afterFunction = rest.slice(functionName.length);
     const argMatch = afterFunction.match(/^[ \t]+([^\s])/);
@@ -153,6 +163,7 @@ function getListIndentation(prefix: string, openParenIdx: number): string {
       const firstArgIdx = openParenIdx + 1 + functionName.length + (afterFunction.indexOf(argMatch[1]));
       return " ".repeat(getColumn(prefix, firstArgIdx));
     }
+
     return " ".repeat(openCol + 2);
   }
   return " ".repeat(openCol + 1);
@@ -209,7 +220,7 @@ export function calculateIndentation(prefix: string): string {
 
     if (scanIdx >= 0) {
         const lastChar = prefix[scanIdx];
-        if (lastChar === ')' || lastChar === ']' || lastChar === '}') {
+        if (isClosingDelimiter(lastChar)) {
             const matchingOpen = findMatchingOpener(prefix, scanIdx);
             if (matchingOpen !== -1) {
                 const lineStart = prefix.lastIndexOf('\n', matchingOpen) + 1;
@@ -253,7 +264,7 @@ export function calculateIndentation(prefix: string): string {
         continue;
       }
 
-      if (char === ')' || char === ']' || char === '}') {
+      if (isClosingDelimiter(char)) {
         foundCloser = true;
       } else {
         foundContent = true;
@@ -270,9 +281,13 @@ export function calculateIndentation(prefix: string): string {
     }
   }
 
-  return prefix[openParenIdx] === '(' 
-    ? getListIndentation(prefix, openParenIdx) 
-    : getCollectionIndentation(prefix, openParenIdx);
+  const openChar = prefix[openParenIdx];
+
+  if (openChar === '(') {
+    return getListIndentation(prefix, openParenIdx);
+  } else {
+    return getCollectionIndentation(prefix, openParenIdx);
+  }
 }
 
 function smartIndent(context: IndentContext, pos: number): number | null {
