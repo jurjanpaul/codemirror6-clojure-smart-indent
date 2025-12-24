@@ -9,7 +9,9 @@ export default [
   {
     input: 'ts/cm6-clj-smart-indent.ts',
     external: ['assert',
-               '@codemirror/state'],
+               '@codemirror/state',
+               '@codemirror/language',
+               '@nextjournal/lezer-clojure'],
     output: [
       {
         file: 'dist/cm6-clj-smart-indent.js',
