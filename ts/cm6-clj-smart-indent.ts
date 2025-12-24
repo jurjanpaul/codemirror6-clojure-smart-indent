@@ -28,8 +28,8 @@ enum IndentRule {
 export function clojureSmartIndent(buffer: string, cursor: number): IndentResult {
   let prefix = buffer.slice(0, cursor);
   const suffix = buffer.slice(cursor);
-  const state = getParseState(prefix, prefix.length);
-  if (!state.inString) {
+  const { inString, ignored } = getParseState(prefix, prefix.length);
+  if (!inString) {
     const lastNewlineIdx = prefix.lastIndexOf("\n");
     const currentLine = prefix.slice(lastNewlineIdx + 1);
     if (currentLine.length > 0 && currentLine.trim() === "") {
@@ -37,7 +37,7 @@ export function clojureSmartIndent(buffer: string, cursor: number): IndentResult
       cursor = prefix.length;
     }
   }
-  const indentation = calculateIndentation(prefix);
+  const indentation = calculateIndentation(prefix, inString, ignored);
   const newNewlineAndIndent = "\n" + indentation;
   return {
     buffer: prefix + newNewlineAndIndent + suffix,
@@ -61,35 +61,35 @@ function getIndentation(line: string): string {
   return match ? match[0] : "";
 }
 
-function getParseState(text: string, index: number): { inString: boolean, inComment: boolean } {
+function getIndentationAt(text: string, index: number): string {
+  return getIndentation(getLineAt(text, index));
+}
+
+function getParseState(text: string, index: number): { inString: boolean, inComment: boolean, ignored: boolean[] } {
+  const ignored = new Array(index).fill(false);
   let inString = false;
   let inComment = false;
   for (let i = 0; i < index; i++) {
     const char = text[i];
     if (inComment) {
-      if (char === '\n') {
-        inComment = false;
-      }
+      ignored[i] = true;
+      if (char === '\n') inComment = false;
       continue;
     }
     if (inString) {
-      if (char === '"' && (i === 0 || text[i-1] !== '\\')) {
-        inString = false;
-      }
+      ignored[i] = true;
+      if (char === '"' && (i === 0 || text[i-1] !== '\\')) inString = false;
       continue;
     }
     if (char === '"') {
+      ignored[i] = true;
       inString = true;
     } else if (char === ';') {
+      ignored[i] = true;
       inComment = true;
     }
   }
-  return { inString, inComment };
-}
-
-function isInCommentOrString(text: string, index: number): boolean {
-  const state = getParseState(text, index);
-  return state.inString || state.inComment;
+  return { inString, inComment, ignored };
 }
 
 function isOpeningDelimiter(char: string): boolean {
@@ -100,47 +100,25 @@ function isClosingDelimiter(char: string): boolean {
   return char === ')' || char === ']' || char === '}';
 }
 
-function walkBackwards(text: string, index: number, minIndex: number, callback: (char: string, i: number) => boolean | void): number {
+function walkBackwards(text: string, index: number, minIndex: number, ignored: boolean[], callback: (char: string, i: number) => boolean | void): number {
   for (let i = index; i >= minIndex; i--) {
-    if (isInCommentOrString(text, i) || text[i] === ';') {
-      continue;
-    }
-    if (callback(text[i], i)) {
-      return i;
-    }
+    if (ignored[i]) continue;
+    if (callback(text[i], i)) return i;
   }
   return -1;
 }
 
-function findLastSignificantCharIdx(text: string, index: number, minIndex: number = 0): number {
-  return walkBackwards(text, index, minIndex, (char) => !/\s/.test(char));
+function findLastSignificantCharIdx(text: string, index: number, ignored: boolean[], minIndex: number = 0): number {
+  return walkBackwards(text, index, minIndex, ignored, (char) => !/\s/.test(char));
 }
 
-function findOpenDelimiter(prefix: string): number {
-  let depth = 0;
-  return walkBackwards(prefix, prefix.length - 1, 0, (char) => {
+function findOpener(text: string, index: number, ignored: boolean[], depth: number = 0): number {
+  return walkBackwards(text, index, 0, ignored, (char) => {
     if (isClosingDelimiter(char)) {
       depth++;
     } else if (isOpeningDelimiter(char)) {
-      if (depth === 0) {
-        return true;
-      }
+      if (depth === 0) return true;
       depth--;
-    }
-    return false;
-  });
-}
-
-function findMatchingOpener(prefix: string, closeIdx: number): number {
-  let depth = 1;
-  return walkBackwards(prefix, closeIdx - 1, 0, (char) => {
-    if (isClosingDelimiter(char)) {
-      depth++;
-    } else if (isOpeningDelimiter(char)) {
-      depth--;
-      if (depth === 0) {
-        return true;
-      }
     }
     return false;
   });
@@ -187,39 +165,37 @@ function getFormIndentation(prefix: string, openParenIdx: number): string {
   return " ".repeat(openCol + rule);
 }
 
-function getTopLevelIndentation(prefix: string): string {
-  const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1);
+function getTopLevelIndentation(prefix: string, ignored: boolean[]): string {
+  const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, ignored);
   if (scanIdx >= 0 && isClosingDelimiter(prefix[scanIdx])) {
-    const matchingOpen = findMatchingOpener(prefix, scanIdx);
+    const matchingOpen = findOpener(prefix, scanIdx, ignored, -1);
     if (matchingOpen !== -1) {
-      return getIndentation(getLineAt(prefix, matchingOpen));
+      return getIndentationAt(prefix, matchingOpen);
     }
   }
   const lastNewline = prefix.lastIndexOf("\n");
-  if (lastNewline === -1) return "";
-  const currentLine = prefix.slice(lastNewline + 1);
-  if (currentLine.trim() === "") {
-    return getIndentation(getLineAt(prefix, lastNewline));
+  const currentLine = lastNewline === -1 ? prefix : prefix.slice(lastNewline + 1);
+  if (currentLine.trim() === "" && lastNewline !== -1) {
+    return getIndentationAt(prefix, lastNewline);
   }
   return getIndentation(currentLine);
 }
 
-export function calculateIndentation(prefix: string): string {
+export function calculateIndentation(prefix: string, inString: boolean, ignored: boolean[]): string {
   const lastNewlineIdx = prefix.lastIndexOf("\n");
   const lastLine = prefix.slice(lastNewlineIdx + 1);
   if (lastNewlineIdx !== -1 && lastLine.trim() === "") {
     return "";
   }
-  const parseState = getParseState(prefix, prefix.length);
-  if (parseState.inString) {
+  if (inString) {
       return "";
   }
-  const openParenIdx = findOpenDelimiter(prefix);
+  const openParenIdx = findOpener(prefix, prefix.length - 1, ignored);
   if (openParenIdx === -1) {
-    return getTopLevelIndentation(prefix);
+    return getTopLevelIndentation(prefix, ignored);
   }
   if (openParenIdx < lastNewlineIdx) {
-    const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, lastNewlineIdx + 1);
+    const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, ignored, lastNewlineIdx + 1);
     if (scanIdx !== -1 && !isClosingDelimiter(prefix[scanIdx])) {
       return getIndentation(lastLine);
     }
@@ -229,7 +205,8 @@ export function calculateIndentation(prefix: string): string {
 
 function smartIndent(context: IndentContext, pos: number): number | null {
   const prefix = context.state.doc.sliceString(0, pos);
-  const indentationString = calculateIndentation(prefix);
+  const { inString, ignored } = getParseState(prefix, prefix.length);
+  const indentationString = calculateIndentation(prefix, inString, ignored);
   return indentationString.length;
 }
 
