@@ -138,6 +138,37 @@ function findMatchingOpener(prefix: string, closeIdx: number): number {
   return findBackwards(prefix, closeIdx - 1, 1, (char, depth) => depth === 1 && isOpeningDelimiter(char));
 }
 
+function getListIndentation(prefix: string, openParenIdx: number): string {
+  const openCol = getColumn(prefix, openParenIdx);
+  const rest = prefix.slice(openParenIdx + 1);
+  const match = rest.match(/^([^\s\(\)\[\]\{\}]+)/);
+
+  if (match) {
+    const functionName = match[1];
+    if (BODY_FORMS.has(functionName)) return " ".repeat(openCol + 2);
+
+    const afterFunction = rest.slice(functionName.length);
+    const argMatch = afterFunction.match(/^[ \t]+([^\s])/);
+    if (argMatch) {
+      const firstArgIdx = openParenIdx + 1 + functionName.length + (afterFunction.indexOf(argMatch[1]));
+      return " ".repeat(getColumn(prefix, firstArgIdx));
+    }
+    return " ".repeat(openCol + 2);
+  }
+  return " ".repeat(openCol + 1);
+}
+
+function getCollectionIndentation(prefix: string, openParenIdx: number): string {
+  const openCol = getColumn(prefix, openParenIdx);
+  const rest = prefix.slice(openParenIdx + 1);
+  const argMatch = rest.match(/^[ \t]+([^\s])/);
+  if (argMatch) {
+    const firstArgIdx = openParenIdx + 1 + rest.indexOf(argMatch[1]);
+    return " ".repeat(getColumn(prefix, firstArgIdx));
+  }
+  return " ".repeat(openCol + 1);
+}
+
 export function calculateIndentation(prefix: string): string {
   // Check if we are inside a string
   const parseState = getParseState(prefix, prefix.length);
@@ -239,40 +270,9 @@ export function calculateIndentation(prefix: string): string {
     }
   }
 
-  const openChar = prefix[openParenIdx];
-  const openCol = getColumn(prefix, openParenIdx);
-
-  if (openChar === '(') {
-    // List indentation logic
-    const rest = prefix.slice(openParenIdx + 1);
-    const match = rest.match(/^([^\s\(\)\[\]\{\}]+)/);
-    if (match) {
-      const functionName = match[1];
-      if (BODY_FORMS.has(functionName)) {
-        return " ".repeat(openCol + 2);
-      }
-
-      // Regular function call: align with first argument if it's on the same line
-      const afterFunction = rest.slice(functionName.length);
-      const argMatch = afterFunction.match(/^[ \t]+([^\s])/);
-      if (argMatch) {
-        const firstArgIdx = openParenIdx + 1 + functionName.length + (afterFunction.indexOf(argMatch[1]));
-        return " ".repeat(getColumn(prefix, firstArgIdx));
-      }
-
-      return " ".repeat(openCol + 2);
-    }
-    return " ".repeat(openCol + 1);
-  } else {
-    // Vector, Map, Set: align with first element or indent by 1
-    const rest = prefix.slice(openParenIdx + 1);
-    const argMatch = rest.match(/^[ \t]+([^\s])/);
-    if (argMatch) {
-      const firstArgIdx = openParenIdx + 1 + rest.indexOf(argMatch[1]);
-      return " ".repeat(getColumn(prefix, firstArgIdx));
-    }
-    return " ".repeat(openCol + 1);
-  }
+  return prefix[openParenIdx] === '(' 
+    ? getListIndentation(prefix, openParenIdx) 
+    : getCollectionIndentation(prefix, openParenIdx);
 }
 
 function smartIndent(context: IndentContext, pos: number): number | null {
