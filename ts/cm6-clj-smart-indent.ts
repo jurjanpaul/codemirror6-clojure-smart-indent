@@ -1,4 +1,4 @@
-import { IndentContext } from "@codemirror/language"
+import type { IndentContext } from "@codemirror/language"
 import type { Extension, Facet } from "@codemirror/state"
 
 export interface IndentResult {
@@ -25,8 +25,18 @@ const BODY_FORMS = new Set([
  * Used for testing purposes.
  */
 export function clojureSmartIndent(buffer: string, cursor: number): IndentResult {
-  const prefix = buffer.slice(0, cursor);
+  let prefix = buffer.slice(0, cursor);
   const suffix = buffer.slice(cursor);
+
+  const state = getParseState(prefix, prefix.length);
+  if (!state.inString) {
+    const lastNewlineIdx = prefix.lastIndexOf("\n");
+    const currentLine = prefix.slice(lastNewlineIdx + 1);
+    if (currentLine.length > 0 && currentLine.trim() === "") {
+      prefix = prefix.slice(0, lastNewlineIdx + 1);
+      cursor = prefix.length;
+    }
+  }
 
   const indentation = calculateIndentation(prefix);
   const newNewlineAndIndent = "\n" + indentation;
@@ -35,6 +45,25 @@ export function clojureSmartIndent(buffer: string, cursor: number): IndentResult
     buffer: prefix + newNewlineAndIndent + suffix,
     cursor: cursor + newNewlineAndIndent.length
   };
+}
+
+function getLineAt(text: string, index: number): string {
+  const start = text.lastIndexOf("\n", index - 1) + 1;
+  const end = text.indexOf("\n", index);
+  return text.slice(start, end === -1 ? text.length : end);
+}
+
+function getIndentation(line: string): string {
+  const match = line.match(/^[ \t]*/);
+  return match ? match[0] : "";
+}
+
+function isOpeningDelimiter(char: string): boolean {
+  return char === '(' || char === '[' || char === '{';
+}
+
+function isClosingDelimiter(char: string): boolean {
+  return char === ')' || char === ']' || char === '}';
 }
 
 function getColumn(text: string, index: number): number {
@@ -78,54 +107,35 @@ function isInCommentOrString(text: string, index: number): boolean {
   return state.inString || state.inComment;
 }
 
-function findOpenDelimiter(prefix: string): number {
-  let i = prefix.length - 1;
-  let depth = 0;
+function findBackwards(text: string, index: number, initialDepth: number, stopFn: (char: string, depth: number) => boolean): number {
+  let i = index;
+  let depth = initialDepth;
 
   while (i >= 0) {
-    const char = prefix[i];
-
-    if (isInCommentOrString(prefix, i)) {
+    if (isInCommentOrString(text, i)) {
       i--;
       continue;
     }
-
-    if (char === ')' || char === ']' || char === '}') {
-      depth++;
-    } else if (char === '(' || char === '[' || char === '{') {
-      if (depth === 0) {
-        return i;
-      }
+    const char = text[i];
+    if (isOpeningDelimiter(char)) {
+      if (stopFn(char, depth)) return i;
       depth--;
+    } else if (isClosingDelimiter(char)) {
+      depth++;
+    } else {
+      if (stopFn(char, depth)) return i;
     }
     i--;
   }
   return -1;
 }
 
+function findOpenDelimiter(prefix: string): number {
+  return findBackwards(prefix, prefix.length - 1, 0, (char, depth) => depth === 0 && isOpeningDelimiter(char));
+}
+
 function findMatchingOpener(prefix: string, closeIdx: number): number {
-  let i = closeIdx - 1;
-  let depth = 1;
-
-  while (i >= 0) {
-    const char = prefix[i];
-
-    if (isInCommentOrString(prefix, i)) {
-      i--;
-      continue;
-    }
-
-    if (char === ')' || char === ']' || char === '}') {
-      depth++;
-    } else if (char === '(' || char === '[' || char === '{') {
-      depth--;
-      if (depth === 0) {
-        return i;
-      }
-    }
-    i--;
-  }
-  return -1;
+  return findBackwards(prefix, closeIdx - 1, 1, (char, depth) => depth === 1 && isOpeningDelimiter(char));
 }
 
 export function calculateIndentation(prefix: string): string {
