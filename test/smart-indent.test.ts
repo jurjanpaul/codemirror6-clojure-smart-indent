@@ -85,9 +85,33 @@ describe("Clojure Smart Indent", () => {
   });
 
   it("should not indent when pressing Enter inside a string", () => {
-    // Current behavior will likely indent to align with the string start or function body,
-    // injecting unwanted spaces into the string content.
     assertSmartIndent('(println "Hello\n|")',
                       '(println "Hello|")');
+  });
+
+  it("should not indent when pressing Enter inside a multi-line string", () => {
+    assertSmartIndent(`(println "Hello\n  there\n|")`, `(println "Hello\n  there|")`);
+  });
+
+  it("should dedent correctly after multiple closing parentheses", () => {
+    assertSmartIndent(
+`(defn foo [x]
+  (let [y 1]
+    (println y)))
+|`,
+`(defn foo [x]
+  (let [y 1]
+    (println y)))|`
+    );
+  });
+
+  it("should dedent correctly when closing paren is followed by comment", () => {
+    assertSmartIndent(
+`(let [x 1]
+  x) ; comment
+|`,
+`(let [x 1]
+  x) ; comment|`
+    );
   });
 });

@@ -39,21 +39,33 @@ function getColumn(text: string, index: number): number {
 }
 
 function getParseState(text: string, index: number): { inString: boolean, inComment: boolean } {
-  // Simple forward scan from start of line to see if index is in a comment or string
-  const lastNewline = text.lastIndexOf("\n", index);
-  const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
   let inString = false;
   let inComment = false;
 
-  for (let i = lineStart; i < index; i++) {
+  for (let i = 0; i < index; i++) {
     const char = text[i];
-    if (inComment) continue;
-    if (char === '"' && (i === 0 || text[i-1] !== '\\')) {
-      inString = !inString;
-    } else if (char === ';' && !inString) {
+
+    if (inComment) {
+      if (char === '\n') {
+        inComment = false;
+      }
+      continue;
+    }
+
+    if (inString) {
+      if (char === '"' && (i === 0 || text[i-1] !== '\\')) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === ';') {
       inComment = true;
     }
   }
+
   return { inString, inComment };
 }
 
@@ -87,6 +99,36 @@ function findOpenDelimiter(prefix: string): number {
   return -1;
 }
 
+function findMatchingOpener(prefix: string, closeIdx: number): number {
+  let i = closeIdx - 1;
+  let depth = 1;
+
+  while (i >= 0) {
+    const char = prefix[i];
+    
+    // Check if we are in string/comment using our robust forward scanner
+    // Optimization: scanning from 0 every char is slow O(N^2). 
+    // But since we are going backwards, maybe we can accept it or optimize?
+    // For now, let's just use getParseState but maybe we can do better.
+    // Actually, isInCommentOrString does exactly this.
+    if (isInCommentOrString(prefix, i)) {
+      i--;
+      continue;
+    }
+
+    if (char === ')' || char === ']' || char === '}') {
+      depth++;
+    } else if (char === '(' || char === '[' || char === '{') {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+    }
+    i--;
+  }
+  return -1;
+}
+
 export function calculateIndentation(prefix: string): string {
   // Check if we are inside a string
   const parseState = getParseState(prefix, prefix.length);
@@ -97,7 +139,42 @@ export function calculateIndentation(prefix: string): string {
   const openParenIdx = findOpenDelimiter(prefix);
 
   if (openParenIdx === -1) {
-    // Top level: match previous line indentation
+    // Top level: check if we just closed a form
+    let scanIdx = prefix.length - 1;
+    // Skip whitespace and comments backwards to find the last significant char
+    while (scanIdx >= 0) {
+        const char = prefix[scanIdx];
+        if (/\s/.test(char)) {
+            scanIdx--;
+            continue;
+        }
+        
+        // Check for comment end (newline) - if we hit a newline, we need to check if the line above is a comment
+        // But we are scanning backwards. 
+        // Simpler: use the forward scan helper to check if this position is in a comment/string
+        const state = getParseState(prefix, scanIdx + 1); // +1 because getParseState is exclusive/index-based
+        if (state.inComment || state.inString) {
+            scanIdx--;
+            continue;
+        }
+
+        break; 
+    }
+
+    if (scanIdx >= 0) {
+        const lastChar = prefix[scanIdx];
+        if (lastChar === ')' || lastChar === ']' || lastChar === '}') {
+            const matchingOpen = findMatchingOpener(prefix, scanIdx);
+            if (matchingOpen !== -1) {
+                const lineStart = prefix.lastIndexOf('\n', matchingOpen) + 1;
+                const line = prefix.slice(lineStart);
+                const match = line.match(/^[ \t]*/);
+                return match ? match[0] : "";
+            }
+        }
+    }
+
+    // Fallback: match previous line indentation
     const lines = prefix.split("\n");
     let refLine = lines[lines.length - 1];
     if (refLine.trim() === "" && lines.length > 1) {
