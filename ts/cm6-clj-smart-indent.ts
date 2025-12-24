@@ -19,6 +19,12 @@ const BODY_FORMS = new Set([
   "with-out-str", "with-precision", "with-redefs", "with-redefs-fn"
 ]);
 
+enum IndentRule {
+  Body = 2,
+  Inner = 1,
+  Align = 0
+}
+
 export function clojureSmartIndent(buffer: string, cursor: number): IndentResult {
   let prefix = buffer.slice(0, cursor);
   const suffix = buffer.slice(cursor);
@@ -140,32 +146,45 @@ function findMatchingOpener(prefix: string, closeIdx: number): number {
   });
 }
 
+function getFirstElementCol(prefix: string, startIdx: number): number | null {
+  const rest = prefix.slice(startIdx);
+  const match = rest.match(/^[ \t]+([^\s])/);
+  if (match) {
+    return getColumn(prefix, startIdx + rest.indexOf(match[1]));
+  }
+  return null;
+}
+
 function getFormIndentation(prefix: string, openParenIdx: number): string {
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
   const rest = prefix.slice(openParenIdx + 1);
+  let rule: IndentRule = IndentRule.Inner;
+  let alignStartIdx = -1;
+  let fallback: IndentRule = IndentRule.Inner;
   if (openChar === "(") {
     const symbolMatch = rest.match(/^([^\s\(\)\[\]\{\}]+)/);
     if (symbolMatch) {
       const symbolName = symbolMatch[1];
-      const rule = BODY_FORMS.has(symbolName) ? "body" : "list";
-      if (rule === "body") return " ".repeat(openCol + 2);
-      const afterSymbol = rest.slice(symbolName.length);
-      const firstArgMatch = afterSymbol.match(/^[ \t]+([^\s])/);
-      if (firstArgMatch) {
-        const firstArgIdx = openParenIdx + 1 + symbolName.length + afterSymbol.indexOf(firstArgMatch[1]);
-        return " ".repeat(getColumn(prefix, firstArgIdx));
+      if (BODY_FORMS.has(symbolName)) {
+        rule = IndentRule.Body;
+      } else {
+        rule = IndentRule.Align;
+        alignStartIdx = openParenIdx + 1 + symbolName.length;
+        fallback = IndentRule.Body;
       }
-      return " ".repeat(openCol + 2);
     }
-    return " ".repeat(openCol + 1);
+  } else {
+    rule = IndentRule.Align;
+    alignStartIdx = openParenIdx + 1;
+    fallback = IndentRule.Inner;
   }
-  const firstElemMatch = rest.match(/^[ \t]+([^\s])/);
-  if (firstElemMatch) {
-    const firstElemIdx = openParenIdx + 1 + rest.indexOf(firstElemMatch[1]);
-    return " ".repeat(getColumn(prefix, firstElemIdx));
+  if (rule === IndentRule.Align) {
+    const alignCol = getFirstElementCol(prefix, alignStartIdx);
+    if (alignCol !== null) return " ".repeat(alignCol);
+    rule = fallback;
   }
-  return " ".repeat(openCol + 1);
+  return " ".repeat(openCol + rule);
 }
 
 function getTopLevelIndentation(prefix: string): string {
