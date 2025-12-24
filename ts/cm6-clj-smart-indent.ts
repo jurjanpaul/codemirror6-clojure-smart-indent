@@ -88,48 +88,73 @@ function isClosingDelimiter(char: string): boolean {
   return char === ')' || char === ']' || char === '}';
 }
 
-function findOpenDelimiter(prefix: string): number {
-  let i = prefix.length - 1;
-  let depth = 0;
-  while (i >= 0) {
-    const char = prefix[i];
-    if (isInCommentOrString(prefix, i)) {
-      i--;
+function walkBackwards(text: string, index: number, minIndex: number, callback: (char: string, i: number) => boolean | void): number {
+  for (let i = index; i >= minIndex; i--) {
+    if (isInCommentOrString(text, i) || text[i] === ';') {
       continue;
     }
-    if (isClosingDelimiter(char)) {
-      depth++;
-    } else if (isOpeningDelimiter(char)) {
-      if (depth === 0) {
-        return i;
-      }
-      depth--;
+    if (callback(text[i], i)) {
+      return i;
     }
-    i--;
   }
   return -1;
 }
 
-function findMatchingOpener(prefix: string, closeIdx: number): number {
-  let i = closeIdx - 1;
-  let depth = 1;
-  while (i >= 0) {
-    const char = prefix[i];
-    if (isInCommentOrString(prefix, i)) {
-      i--;
-      continue;
+function findLastSignificantCharIdx(text: string, index: number, minIndex: number = 0): number {
+  return walkBackwards(text, index, minIndex, (char) => !/\s/.test(char));
+}
+
+function findOpenDelimiter(prefix: string): number {
+  let depth = 0;
+  return walkBackwards(prefix, prefix.length - 1, 0, (char) => {
+    if (isClosingDelimiter(char)) {
+      depth++;
+    } else if (isOpeningDelimiter(char)) {
+      if (depth === 0) {
+        return true;
+      }
+      depth--;
     }
+    return false;
+  });
+}
+
+function findMatchingOpener(prefix: string, closeIdx: number): number {
+  let depth = 1;
+  return walkBackwards(prefix, closeIdx - 1, 0, (char) => {
     if (isClosingDelimiter(char)) {
       depth++;
     } else if (isOpeningDelimiter(char)) {
       depth--;
       if (depth === 0) {
-        return i;
+        return true;
       }
     }
-    i--;
+    return false;
+  });
+}
+
+function getTopLevelIndentation(prefix: string): string {
+  const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1);
+  if (scanIdx >= 0) {
+    const lastChar = prefix[scanIdx];
+    if (isClosingDelimiter(lastChar)) {
+      const matchingOpen = findMatchingOpener(prefix, scanIdx);
+      if (matchingOpen !== -1) {
+        const lineStart = prefix.lastIndexOf('\n', matchingOpen) + 1;
+        const line = prefix.slice(lineStart);
+        const match = line.match(/^[ \t]*/);
+        return match ? match[0] : "";
+      }
+    }
   }
-  return -1;
+  const lines = prefix.split("\n");
+  let refLine = lines[lines.length - 1];
+  if (refLine.trim() === "" && lines.length > 1) {
+    refLine = lines[lines.length - 2];
+  }
+  const match = refLine.match(/^[ \t]*/);
+  return match ? match[0] : "";
 }
 
 function getListIndentation(prefix: string, openParenIdx: number): string {
@@ -163,42 +188,6 @@ function getCollectionIndentation(prefix: string, openParenIdx: number): string 
   return " ".repeat(openCol + 1);
 }
 
-function getTopLevelIndentation(prefix: string): string {
-  let scanIdx = prefix.length - 1;
-  while (scanIdx >= 0) {
-    const char = prefix[scanIdx];
-    if (/\s/.test(char)) {
-      scanIdx--;
-      continue;
-    }
-    const state = getParseState(prefix, scanIdx + 1);
-    if (state.inComment || state.inString) {
-      scanIdx--;
-      continue;
-    }
-    break;
-  }
-  if (scanIdx >= 0) {
-    const lastChar = prefix[scanIdx];
-    if (isClosingDelimiter(lastChar)) {
-      const matchingOpen = findMatchingOpener(prefix, scanIdx);
-      if (matchingOpen !== -1) {
-        const lineStart = prefix.lastIndexOf('\n', matchingOpen) + 1;
-        const line = prefix.slice(lineStart);
-        const match = line.match(/^[ \t]*/);
-        return match ? match[0] : "";
-      }
-    }
-  }
-  const lines = prefix.split("\n");
-  let refLine = lines[lines.length - 1];
-  if (refLine.trim() === "" && lines.length > 1) {
-    refLine = lines[lines.length - 2];
-  }
-  const match = refLine.match(/^[ \t]*/);
-  return match ? match[0] : "";
-}
-
 export function calculateIndentation(prefix: string): string {
   const parseState = getParseState(prefix, prefix.length);
   if (parseState.inString) {
@@ -217,29 +206,15 @@ export function calculateIndentation(prefix: string): string {
   }
   const lastNewlineIdx = prefix.lastIndexOf("\n");
   if (openParenIdx < lastNewlineIdx) {
-    let scanIdx = prefix.length - 1;
     let foundCloser = false;
     let foundContent = false;
-    while (scanIdx > lastNewlineIdx) {
-      const char = prefix[scanIdx];
-      if (/\s/.test(char)) {
-        scanIdx--;
-        continue;
-      }
-      if (isInCommentOrString(prefix, scanIdx)) {
-        scanIdx--;
-        continue;
-      }
-      if (char === ';') {
-        scanIdx--;
-        continue;
-      }
-      if (isClosingDelimiter(char)) {
+    const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, lastNewlineIdx + 1);
+    if (scanIdx !== -1) {
+      if (isClosingDelimiter(prefix[scanIdx])) {
         foundCloser = true;
       } else {
         foundContent = true;
       }
-      break;
     }
     if (!foundCloser && foundContent) {
        const lastLine = prefix.slice(lastNewlineIdx + 1);
