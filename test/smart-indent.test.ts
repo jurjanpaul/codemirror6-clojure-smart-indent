@@ -14,7 +14,7 @@ function format(buffer: string, cursor: number) {
   return buffer.slice(0, cursor) + "|" + buffer.slice(cursor);
 }
 
-function runTest(input: string, expected: string) {
+function assertSmartIndent(expected: string, input: string) {
   const { buffer, cursor } = parse(input);
   const result = clojureSmartIndent(buffer, cursor);
   const actual = format(result.buffer, result.cursor);
@@ -23,56 +23,71 @@ function runTest(input: string, expected: string) {
 
 describe("Clojure Smart Indent", () => {
   it("should preserve existing indentation on a simple line", () => {
-    runTest("  (foo)|", "  (foo)\n  |");
+    assertSmartIndent("  (foo)\n  |",
+                      "  (foo)|");
   });
 
   it("should handle basic list indentation (placeholder test)", () => {
-    runTest("(defn foo [x]|)", "(defn foo [x]\n  |)");
+    assertSmartIndent("(defn foo [x]\n  |",
+                      "(defn foo [x]|");
   });
 
   it("should align with first argument in a regular function call", () => {
-    runTest("(foo bar |)", "(foo bar \n     |)");
+    assertSmartIndent("(foo bar \n     |)",
+                      "(foo bar |)");
   });
 
   it("should indent by 2 for body forms if no args on same line", () => {
-    runTest("(let |)", "(let \n  |)");
+    assertSmartIndent("(let \n  |",
+                      "(let |");
   });
 
   it("should indent by 1 for vectors", () => {
-    runTest("[foo |]", "[foo \n |]");
+    assertSmartIndent("[foo \n |]",
+                      "[foo |]");
   });
 
   it("should handle nested structures", () => {
-    runTest("(defn foo [x]\n  (let [y |]))", "(defn foo [x]\n  (let [y \n        |]))");
+    assertSmartIndent("(defn foo [x]\n  (let [y \n        |]))",
+                      "(defn foo [x]\n  (let [y |]))");
   });
 
   it("should ignore parens in strings", () => {
-    runTest("(println \"ignore )\"|)", "(println \"ignore )\"\n         |)");
+    assertSmartIndent("(println \"ignore )\"\n         |",
+                      "(println \"ignore )\"|");
   });
 
   it("should ignore parens in comments", () => {
-    runTest("(defn foo [] ; ignore )\n  |)", "(defn foo [] ; ignore )\n  \n  |)");
+    assertSmartIndent("(defn foo [] ; ignore )\n  \n  |",
+                      "(defn foo [] ; ignore )\n  |");
   });
 
   it("should respect manual indentation from previous line", () => {
-    runTest(
-`(foo
-    bar|)`,
+    assertSmartIndent(
 `(foo
     bar
-    |)`
+    |)`,
+`(foo
+    bar|)`
     );
   });
 
   it("should dedent after closing a form", () => {
-    runTest(
-`(foo
-  (bar
-    baz)|)`,
+    assertSmartIndent(
 `(foo
   (bar
     baz)
-  |)`
+  |)`,
+`(foo
+  (bar
+    baz)|)`
     );
+  });
+
+  it("should not indent when pressing Enter inside a string", () => {
+    // Current behavior will likely indent to align with the string start or function body,
+    // injecting unwanted spaces into the string content.
+    assertSmartIndent('(println "Hello\n|")',
+                      '(println "Hello|")');
   });
 });

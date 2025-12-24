@@ -38,7 +38,7 @@ function getColumn(text: string, index: number): number {
   return index - (lastNewline === -1 ? 0 : lastNewline + 1);
 }
 
-function isInCommentOrString(text: string, index: number): boolean {
+function getParseState(text: string, index: number): { inString: boolean, inComment: boolean } {
   // Simple forward scan from start of line to see if index is in a comment or string
   const lastNewline = text.lastIndexOf("\n", index);
   const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
@@ -54,7 +54,12 @@ function isInCommentOrString(text: string, index: number): boolean {
       inComment = true;
     }
   }
-  return inString || inComment;
+  return { inString, inComment };
+}
+
+function isInCommentOrString(text: string, index: number): boolean {
+  const state = getParseState(text, index);
+  return state.inString || state.inComment;
 }
 
 function findOpenDelimiter(prefix: string): number {
@@ -83,6 +88,12 @@ function findOpenDelimiter(prefix: string): number {
 }
 
 export function calculateIndentation(prefix: string): string {
+  // Check if we are inside a string
+  const parseState = getParseState(prefix, prefix.length);
+  if (parseState.inString) {
+      return "";
+  }
+
   const openParenIdx = findOpenDelimiter(prefix);
 
   if (openParenIdx === -1) {
