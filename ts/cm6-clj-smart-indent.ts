@@ -163,13 +163,47 @@ function getCollectionIndentation(prefix: string, openParenIdx: number): string 
   return " ".repeat(openCol + 1);
 }
 
+function getTopLevelIndentation(prefix: string): string {
+  let scanIdx = prefix.length - 1;
+  while (scanIdx >= 0) {
+    const char = prefix[scanIdx];
+    if (/\s/.test(char)) {
+      scanIdx--;
+      continue;
+    }
+    const state = getParseState(prefix, scanIdx + 1);
+    if (state.inComment || state.inString) {
+      scanIdx--;
+      continue;
+    }
+    break;
+  }
+  if (scanIdx >= 0) {
+    const lastChar = prefix[scanIdx];
+    if (isClosingDelimiter(lastChar)) {
+      const matchingOpen = findMatchingOpener(prefix, scanIdx);
+      if (matchingOpen !== -1) {
+        const lineStart = prefix.lastIndexOf('\n', matchingOpen) + 1;
+        const line = prefix.slice(lineStart);
+        const match = line.match(/^[ \t]*/);
+        return match ? match[0] : "";
+      }
+    }
+  }
+  const lines = prefix.split("\n");
+  let refLine = lines[lines.length - 1];
+  if (refLine.trim() === "" && lines.length > 1) {
+    refLine = lines[lines.length - 2];
+  }
+  const match = refLine.match(/^[ \t]*/);
+  return match ? match[0] : "";
+}
+
 export function calculateIndentation(prefix: string): string {
-  // Check if we are inside a string
   const parseState = getParseState(prefix, prefix.length);
   if (parseState.inString) {
       return "";
   }
-  // High precedence rule: never indent after a blank line
   const lines = prefix.split("\n");
   if (lines.length > 0) {
       const lastLine = lines[lines.length - 1];
@@ -179,42 +213,7 @@ export function calculateIndentation(prefix: string): string {
   }
   const openParenIdx = findOpenDelimiter(prefix);
   if (openParenIdx === -1) {
-    // Top level: check if we just closed a form
-    let scanIdx = prefix.length - 1;
-    // Skip whitespace and comments backwards to find the last significant char
-    while (scanIdx >= 0) {
-        const char = prefix[scanIdx];
-        if (/\s/.test(char)) {
-            scanIdx--;
-            continue;
-        }
-        const state = getParseState(prefix, scanIdx + 1); 
-        if (state.inComment || state.inString) {
-            scanIdx--;
-            continue;
-        }
-        break;
-    }
-    if (scanIdx >= 0) {
-        const lastChar = prefix[scanIdx];
-        if (isClosingDelimiter(lastChar)) {
-            const matchingOpen = findMatchingOpener(prefix, scanIdx);
-            if (matchingOpen !== -1) {
-                const lineStart = prefix.lastIndexOf('\n', matchingOpen) + 1;
-                const line = prefix.slice(lineStart);
-                const match = line.match(/^[ \t]*/);
-                return match ? match[0] : "";
-            }
-        }
-    }
-    // Fallback: match previous line indentation
-    const lines = prefix.split("\n");
-    let refLine = lines[lines.length - 1];
-    if (refLine.trim() === "" && lines.length > 1) {
-        refLine = lines[lines.length - 2];
-    }
-    const match = refLine.match(/^[ \t]*/);
-    return match ? match[0] : "";
+    return getTopLevelIndentation(prefix);
   }
   const lastNewlineIdx = prefix.lastIndexOf("\n");
   if (openParenIdx < lastNewlineIdx) {
