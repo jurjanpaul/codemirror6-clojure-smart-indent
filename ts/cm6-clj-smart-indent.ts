@@ -19,11 +19,6 @@ const BODY_FORMS = new Set([
   "with-out-str", "with-precision", "with-redefs", "with-redefs-fn"
 ]);
 
-/**
- * A pure function that takes a buffer and cursor position (before pressing Enter),
- * and returns the new buffer and cursor position after Enter and smart indentation.
- * Used for testing purposes.
- */
 export function clojureSmartIndent(buffer: string, cursor: number): IndentResult {
   let prefix = buffer.slice(0, cursor);
   const suffix = buffer.slice(cursor);
@@ -43,6 +38,7 @@ export function clojureSmartIndent(buffer: string, cursor: number): IndentResult
     cursor: cursor + newNewlineAndIndent.length
   };
 }
+
 
 function getColumn(text: string, index: number): number {
   const lastNewline = text.lastIndexOf("\n", index);
@@ -145,6 +141,34 @@ function findMatchingOpener(prefix: string, closeIdx: number): number {
   });
 }
 
+function getFormIndentation(prefix: string, openParenIdx: number): string {
+  const openChar = prefix[openParenIdx];
+  const openCol = getColumn(prefix, openParenIdx);
+  const rest = prefix.slice(openParenIdx + 1);
+  if (openChar === "(") {
+    const symbolMatch = rest.match(/^([^\s\(\)\[\]\{\}]+)/);
+    if (symbolMatch) {
+      const symbolName = symbolMatch[1];
+      const rule = BODY_FORMS.has(symbolName) ? "body" : "list";
+      if (rule === "body") return " ".repeat(openCol + 2);
+      const afterSymbol = rest.slice(symbolName.length);
+      const firstArgMatch = afterSymbol.match(/^[ \t]+([^\s])/);
+      if (firstArgMatch) {
+        const firstArgIdx = openParenIdx + 1 + symbolName.length + afterSymbol.indexOf(firstArgMatch[1]);
+        return " ".repeat(getColumn(prefix, firstArgIdx));
+      }
+      return " ".repeat(openCol + 2);
+    }
+    return " ".repeat(openCol + 1);
+  }
+  const firstElemMatch = rest.match(/^[ \t]+([^\s])/);
+  if (firstElemMatch) {
+    const firstElemIdx = openParenIdx + 1 + rest.indexOf(firstElemMatch[1]);
+    return " ".repeat(getColumn(prefix, firstElemIdx));
+  }
+  return " ".repeat(openCol + 1);
+}
+
 function getTopLevelIndentation(prefix: string): string {
   const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1);
   if (scanIdx >= 0 && isClosingDelimiter(prefix[scanIdx])) {
@@ -160,37 +184,6 @@ function getTopLevelIndentation(prefix: string): string {
     return getIndentation(getLineAt(prefix, lastNewline));
   }
   return getIndentation(currentLine);
-}
-
-function getListIndentation(prefix: string, openParenIdx: number): string {
-  const openCol = getColumn(prefix, openParenIdx);
-  const rest = prefix.slice(openParenIdx + 1);
-  const match = rest.match(/^([^\s\(\)\[\]\{\}]+)/);
-  if (match) {
-    const functionName = match[1];
-    if (BODY_FORMS.has(functionName)) {
-      return " ".repeat(openCol + 2);
-    }
-    const afterFunction = rest.slice(functionName.length);
-    const argMatch = afterFunction.match(/^[ \t]+([^\s])/);
-    if (argMatch) {
-      const firstArgIdx = openParenIdx + 1 + functionName.length + (afterFunction.indexOf(argMatch[1]));
-      return " ".repeat(getColumn(prefix, firstArgIdx));
-    }
-    return " ".repeat(openCol + 2);
-  }
-  return " ".repeat(openCol + 1);
-}
-
-function getCollectionIndentation(prefix: string, openParenIdx: number): string {
-  const openCol = getColumn(prefix, openParenIdx);
-  const rest = prefix.slice(openParenIdx + 1);
-  const argMatch = rest.match(/^[ \t]+([^\s])/);
-  if (argMatch) {
-    const firstArgIdx = openParenIdx + 1 + rest.indexOf(argMatch[1]);
-    return " ".repeat(getColumn(prefix, firstArgIdx));
-  }
-  return " ".repeat(openCol + 1);
 }
 
 export function calculateIndentation(prefix: string): string {
@@ -213,12 +206,7 @@ export function calculateIndentation(prefix: string): string {
       return getIndentation(lastLine);
     }
   }
-  const openChar = prefix[openParenIdx];
-  if (openChar === '(') {
-    return getListIndentation(prefix, openParenIdx);
-  } else {
-    return getCollectionIndentation(prefix, openParenIdx);
-  }
+  return getFormIndentation(prefix, openParenIdx);
 }
 
 function smartIndent(context: IndentContext, pos: number): number | null {
