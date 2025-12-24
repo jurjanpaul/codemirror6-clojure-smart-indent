@@ -39,7 +39,6 @@ export function clojureSmartIndent(buffer: string, cursor: number): IndentResult
   };
 }
 
-
 function getColumn(text: string, index: number): number {
   const lastNewline = text.lastIndexOf("\n", index);
   return index - (lastNewline === -1 ? 0 : lastNewline + 1);

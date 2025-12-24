@@ -138,4 +138,15 @@ describe("Clojure Smart Indent", () => {
        |`
     );
   });
+  it("should never indent after a line with only whitespace before the cursor", () => {
+    assertSmartIndent(
+`(let [x 1]
+
+
+|xyz`,
+`(let [x 1]
+
+       |xyz`
+    );
+  });
 });
