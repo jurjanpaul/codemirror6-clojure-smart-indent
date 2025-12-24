@@ -58,8 +58,8 @@ describe("Clojure Smart Indent", () => {
   });
 
   it("should ignore parens in comments", () => {
-    assertSmartIndent("(defn foo [] ; ignore )\n  \n  |",
-                      "(defn foo [] ; ignore )\n  |");
+    assertSmartIndent("(defn foo [] ; ignore )\n  |",
+                      "(defn foo [] ; ignore )|");
   });
 
   it("should respect manual indentation from previous line", () => {
@@ -112,6 +112,18 @@ describe("Clojure Smart Indent", () => {
 |`,
 `(let [x 1]
   x) ; comment|`
+    );
+  });
+
+  it("should never indent after a blank line", () => {
+    assertSmartIndent(
+`(let [x 1]
+
+
+|`,
+`(let [x 1]
+
+|`
     );
   });
 });

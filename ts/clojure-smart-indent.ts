@@ -6,8 +6,8 @@ export interface IndentResult {
 const BODY_FORMS = new Set([
   "->", "->>", "as->", "binding", "bound-fn", "case", "catch", "comment",
   "cond", "cond->", "cond->>", "condp", "def", "definterface", "defmethod",
-  "defn", "defmacro", "defprotocol", "defrecord", "defstruct", "deftype",
-  "do", "doseq", "dotimes", "doto", "extend", "extend-protocol",
+  "defn", "defn-", "defmacro", "defprotocol", "defrecord", "defstruct",
+  "deftype", "do", "doseq", "dotimes", "doto", "extend", "extend-protocol",
   "extend-type", "fn", "for", "future", "if", "if-let", "if-not", "if-some",
   "let", "letfn", "locking", "loop", "ns", "proxy", "reify", "struct-map",
   "some->", "some->>", "try", "when", "when-first", "when-let", "when-not",
@@ -105,9 +105,9 @@ function findMatchingOpener(prefix: string, closeIdx: number): number {
 
   while (i >= 0) {
     const char = prefix[i];
-    
+
     // Check if we are in string/comment using our robust forward scanner
-    // Optimization: scanning from 0 every char is slow O(N^2). 
+    // Optimization: scanning from 0 every char is slow O(N^2).
     // But since we are going backwards, maybe we can accept it or optimize?
     // For now, let's just use getParseState but maybe we can do better.
     // Actually, isInCommentOrString does exactly this.
@@ -136,6 +136,15 @@ export function calculateIndentation(prefix: string): string {
       return "";
   }
 
+  // High precedence rule: never indent after a blank line
+  const lines = prefix.split("\n");
+  if (lines.length > 0) {
+      const lastLine = lines[lines.length - 1];
+      if (lastLine.trim() === "") {
+          return "";
+      }
+  }
+
   const openParenIdx = findOpenDelimiter(prefix);
 
   if (openParenIdx === -1) {
@@ -148,9 +157,9 @@ export function calculateIndentation(prefix: string): string {
             scanIdx--;
             continue;
         }
-        
+
         // Check for comment end (newline) - if we hit a newline, we need to check if the line above is a comment
-        // But we are scanning backwards. 
+        // But we are scanning backwards.
         // Simpler: use the forward scan helper to check if this position is in a comment/string
         const state = getParseState(prefix, scanIdx + 1); // +1 because getParseState is exclusive/index-based
         if (state.inComment || state.inString) {
@@ -158,7 +167,7 @@ export function calculateIndentation(prefix: string): string {
             continue;
         }
 
-        break; 
+        break;
     }
 
     if (scanIdx >= 0) {
