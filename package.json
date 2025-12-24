@@ -51,7 +51,7 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "test": "NODE_OPTIONS='--loader ts-node/esm' mocha 'test/**/*.test.ts'",
+    "test": "NODE_OPTIONS='--import tsx' mocha 'test/**/*.test.ts'",
     "_build": "tsc",
     "build": "rollup -c",
     "prepublishOnly": "npm install && npm run build"
