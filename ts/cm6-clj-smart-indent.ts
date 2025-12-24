@@ -27,7 +27,6 @@ const BODY_FORMS = new Set([
 export function clojureSmartIndent(buffer: string, cursor: number): IndentResult {
   let prefix = buffer.slice(0, cursor);
   const suffix = buffer.slice(cursor);
-
   const state = getParseState(prefix, prefix.length);
   if (!state.inString) {
     const lastNewlineIdx = prefix.lastIndexOf("\n");
@@ -37,10 +36,8 @@ export function clojureSmartIndent(buffer: string, cursor: number): IndentResult
       cursor = prefix.length;
     }
   }
-
   const indentation = calculateIndentation(prefix);
   const newNewlineAndIndent = "\n" + indentation;
-
   return {
     buffer: prefix + newNewlineAndIndent + suffix,
     cursor: cursor + newNewlineAndIndent.length
@@ -55,31 +52,26 @@ function getColumn(text: string, index: number): number {
 function getParseState(text: string, index: number): { inString: boolean, inComment: boolean } {
   let inString = false;
   let inComment = false;
-
   for (let i = 0; i < index; i++) {
     const char = text[i];
-
     if (inComment) {
       if (char === '\n') {
         inComment = false;
       }
       continue;
     }
-
     if (inString) {
       if (char === '"' && (i === 0 || text[i-1] !== '\\')) {
         inString = false;
       }
       continue;
     }
-
     if (char === '"') {
       inString = true;
     } else if (char === ';') {
       inComment = true;
     }
   }
-
   return { inString, inComment };
 }
 
@@ -99,15 +91,12 @@ function isClosingDelimiter(char: string): boolean {
 function findOpenDelimiter(prefix: string): number {
   let i = prefix.length - 1;
   let depth = 0;
-
   while (i >= 0) {
     const char = prefix[i];
-
     if (isInCommentOrString(prefix, i)) {
       i--;
       continue;
     }
-
     if (isClosingDelimiter(char)) {
       depth++;
     } else if (isOpeningDelimiter(char)) {
@@ -124,15 +113,12 @@ function findOpenDelimiter(prefix: string): number {
 function findMatchingOpener(prefix: string, closeIdx: number): number {
   let i = closeIdx - 1;
   let depth = 1;
-
   while (i >= 0) {
     const char = prefix[i];
-
     if (isInCommentOrString(prefix, i)) {
       i--;
       continue;
     }
-
     if (isClosingDelimiter(char)) {
       depth++;
     } else if (isOpeningDelimiter(char)) {
@@ -150,20 +136,17 @@ function getListIndentation(prefix: string, openParenIdx: number): string {
   const openCol = getColumn(prefix, openParenIdx);
   const rest = prefix.slice(openParenIdx + 1);
   const match = rest.match(/^([^\s\(\)\[\]\{\}]+)/);
-
   if (match) {
     const functionName = match[1];
     if (BODY_FORMS.has(functionName)) {
       return " ".repeat(openCol + 2);
     }
-
     const afterFunction = rest.slice(functionName.length);
     const argMatch = afterFunction.match(/^[ \t]+([^\s])/);
     if (argMatch) {
       const firstArgIdx = openParenIdx + 1 + functionName.length + (afterFunction.indexOf(argMatch[1]));
       return " ".repeat(getColumn(prefix, firstArgIdx));
     }
-
     return " ".repeat(openCol + 2);
   }
   return " ".repeat(openCol + 1);
@@ -186,7 +169,6 @@ export function calculateIndentation(prefix: string): string {
   if (parseState.inString) {
       return "";
   }
-
   // High precedence rule: never indent after a blank line
   const lines = prefix.split("\n");
   if (lines.length > 0) {
@@ -195,9 +177,7 @@ export function calculateIndentation(prefix: string): string {
           return "";
       }
   }
-
   const openParenIdx = findOpenDelimiter(prefix);
-
   if (openParenIdx === -1) {
     // Top level: check if we just closed a form
     let scanIdx = prefix.length - 1;
@@ -208,16 +188,13 @@ export function calculateIndentation(prefix: string): string {
             scanIdx--;
             continue;
         }
-
         const state = getParseState(prefix, scanIdx + 1); 
         if (state.inComment || state.inString) {
             scanIdx--;
             continue;
         }
-
         break;
     }
-
     if (scanIdx >= 0) {
         const lastChar = prefix[scanIdx];
         if (isClosingDelimiter(lastChar)) {
@@ -230,7 +207,6 @@ export function calculateIndentation(prefix: string): string {
             }
         }
     }
-
     // Fallback: match previous line indentation
     const lines = prefix.split("\n");
     let refLine = lines[lines.length - 1];
@@ -240,30 +216,25 @@ export function calculateIndentation(prefix: string): string {
     const match = refLine.match(/^[ \t]*/);
     return match ? match[0] : "";
   }
-
   const lastNewlineIdx = prefix.lastIndexOf("\n");
   if (openParenIdx < lastNewlineIdx) {
     let scanIdx = prefix.length - 1;
     let foundCloser = false;
     let foundContent = false;
-
     while (scanIdx > lastNewlineIdx) {
       const char = prefix[scanIdx];
       if (/\s/.test(char)) {
         scanIdx--;
         continue;
       }
-
       if (isInCommentOrString(prefix, scanIdx)) {
         scanIdx--;
         continue;
       }
-
       if (char === ';') {
         scanIdx--;
         continue;
       }
-
       if (isClosingDelimiter(char)) {
         foundCloser = true;
       } else {
@@ -271,7 +242,6 @@ export function calculateIndentation(prefix: string): string {
       }
       break;
     }
-
     if (!foundCloser && foundContent) {
        const lastLine = prefix.slice(lastNewlineIdx + 1);
        const match = lastLine.match(/^[ \t]*/);
@@ -280,9 +250,7 @@ export function calculateIndentation(prefix: string): string {
        }
     }
   }
-
   const openChar = prefix[openParenIdx];
-
   if (openChar === '(') {
     return getListIndentation(prefix, openParenIdx);
   } else {
