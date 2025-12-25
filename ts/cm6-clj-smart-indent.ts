@@ -45,34 +45,35 @@ function getIndentationAt(text: string, index: number): string {
   return getIndentation(getLineAt(text, index));
 }
 
-function getParseState(text: string, index: number): { inString: boolean, inComment: boolean, ignored: boolean[], comments: boolean[] } {
-  const ignored = new Array(index).fill(false);
-  const comments = new Array(index).fill(false);
+const FLAG_IGNORED = 1;
+const FLAG_COMMENT = 2;
+
+function parse(text: string): { inString: boolean, inComment: boolean, flags: Uint8Array } {
+  const size = text.length;
+  const flags = new Uint8Array(size);
   let inString = false;
   let inComment = false;
-  for (let i = 0; i < index; i++) {
+  for (let i = 0; i < size; i++) {
     const char = text[i];
     if (inComment) {
-      ignored[i] = true;
-      comments[i] = true;
+      flags[i] = FLAG_IGNORED | FLAG_COMMENT;
       if (char === '\n') inComment = false;
       continue;
     }
     if (inString) {
-      ignored[i] = true;
-      if (char === '"' && (i === 0 || text[i-1] !== '\\')) inString = false;
+      flags[i] = FLAG_IGNORED;
+      if (char === '"' && text[i-1] !== '\\') inString = false;
       continue;
     }
-    if (char === '"') {
-      ignored[i] = true;
+    if (char === '"' && (i === 0 || text[i-1] !== '\\')) {
+      flags[i] = FLAG_IGNORED;
       inString = true;
     } else if (char === ';') {
-      ignored[i] = true;
-      comments[i] = true;
+      flags[i] = FLAG_IGNORED | FLAG_COMMENT;
       inComment = true;
     }
   }
-  return { inString, inComment, ignored, comments };
+  return { inString, inComment, flags };
 }
 
 function isOpeningDelimiter(char: string): boolean {
@@ -83,20 +84,20 @@ function isClosingDelimiter(char: string): boolean {
   return char === ')' || char === ']' || char === '}';
 }
 
-function walkBackwards(text: string, index: number, minIndex: number, ignored: boolean[], callback: (char: string, i: number) => boolean | void): number {
+function findBackwards(text: string, index: number, minIndex: number, flags: Uint8Array, pred: (char: string) => boolean | void): number {
   for (let i = index; i >= minIndex; i--) {
-    if (ignored[i]) continue;
-    if (callback(text[i], i)) return i;
+    if (flags[i] & FLAG_IGNORED) continue;
+    if (pred(text[i], i)) return i;
   }
   return -1;
 }
 
-function findLastSignificantCharIdx(text: string, index: number, ignored: boolean[], minIndex: number = 0): number {
-  return walkBackwards(text, index, minIndex, ignored, (char) => !/\s/.test(char));
+function findLastSignificantCharIdx(text: string, index: number, flags: Uint8Array, minIndex: number = 0): number {
+  return findBackwards(text, index, minIndex, flags, (char) => !/\s/.test(char));
 }
 
-function findOpener(text: string, index: number, ignored: boolean[], depth: number = 0): number {
-  return walkBackwards(text, index, 0, ignored, (char) => {
+function findOpener(text: string, index: number, flags: Uint8Array, depth: number = 0): number {
+  return findBackwards(text, index, 0, flags, (char) => {
     if (isClosingDelimiter(char)) {
       depth++;
     } else if (isOpeningDelimiter(char)) {
@@ -107,29 +108,26 @@ function findOpener(text: string, index: number, ignored: boolean[], depth: numb
   });
 }
 
-function getFirstElementCol(prefix: string, startIdx: number, comments: boolean[]): number | null {
+function getFirstElementCol(prefix: string, startIdx: number, flags: Uint8Array): number | null {
   for (let i = startIdx; i < prefix.length; i++) {
     if (prefix[i] === "\n") return null;
-    if (comments[i]) continue;
+    if (flags[i] & FLAG_COMMENT) continue;
     if (!/\s/.test(prefix[i])) return getColumn(prefix, i);
   }
   return null;
 }
 
-function getFormIndentation(prefix: string, openParenIdx: number, ignored: boolean[], comments: boolean[]): string {
+function getFormIndentation(prefix: string, openParenIdx: number, flags: Uint8Array): string {
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
-  
   let firstElemIdx = -1;
   for (let i = openParenIdx + 1; i < prefix.length; i++) {
     if (prefix[i] === "\n") break;
-    if (!/\s/.test(prefix[i]) && !comments[i]) { firstElemIdx = i; break; }
+    if (!/\s/.test(prefix[i]) && !(flags[i] & FLAG_COMMENT)) { firstElemIdx = i; break; }
   }
-
   if (firstElemIdx === -1) {
     return " ".repeat(openCol + IndentRule.Inner);
   }
-
   let firstElemEndIdx = -1;
   if (prefix[firstElemIdx] === '"') {
     for (let i = firstElemIdx + 1; i < prefix.length; i++) {
@@ -138,7 +136,7 @@ function getFormIndentation(prefix: string, openParenIdx: number, ignored: boole
   } else if (isOpeningDelimiter(prefix[firstElemIdx])) {
     let depth = 0;
     for (let i = firstElemIdx; i < prefix.length; i++) {
-      if (comments[i]) continue;
+      if (flags[i] & FLAG_IGNORED) continue;
       if (isOpeningDelimiter(prefix[i])) depth++;
       else if (isClosingDelimiter(prefix[i])) {
         depth--;
@@ -147,15 +145,13 @@ function getFormIndentation(prefix: string, openParenIdx: number, ignored: boole
     }
   } else {
     for (let i = firstElemIdx; i < prefix.length; i++) {
-      if (comments[i] || /\s|\(|\)|\[|\]|\{|\}/.test(prefix[i])) { firstElemEndIdx = i; break; }
+      if ((flags[i] & FLAG_COMMENT) || /\s|\(|\)|\[|\]|\{|\}/.test(prefix[i])) { firstElemEndIdx = i; break; }
     }
   }
   if (firstElemEndIdx === -1) firstElemEndIdx = prefix.length;
-
-  const secondElemCol = getFirstElementCol(prefix, firstElemEndIdx, comments);
-
+  const secondElemCol = getFirstElementCol(prefix, firstElemEndIdx, flags);
   if (openChar === "(") {
-    if (!ignored[firstElemIdx] && !isOpeningDelimiter(prefix[firstElemIdx]) && prefix[firstElemIdx] !== '"') {
+    if (!(flags[firstElemIdx] & FLAG_IGNORED) && !isOpeningDelimiter(prefix[firstElemIdx]) && prefix[firstElemIdx] !== '"') {
       const symbol = prefix.slice(firstElemIdx, firstElemEndIdx);
       if (BODY_FORMS.has(symbol)) {
         return " ".repeat(openCol + IndentRule.Body);
@@ -166,15 +162,14 @@ function getFormIndentation(prefix: string, openParenIdx: number, ignored: boole
     if (secondElemCol !== null) return " ".repeat(secondElemCol);
     return " ".repeat(openCol + IndentRule.Inner);
   }
-
   if (secondElemCol !== null) return " ".repeat(secondElemCol);
   return " ".repeat(openCol + IndentRule.Inner);
 }
 
-function getTopLevelIndentation(prefix: string, ignored: boolean[]): string {
-  const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, ignored);
+function getTopLevelIndentation(prefix: string, flags: Uint8Array): string {
+  const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags);
   if (scanIdx >= 0 && isClosingDelimiter(prefix[scanIdx])) {
-    const matchingOpen = findOpener(prefix, scanIdx, ignored, -1);
+    const matchingOpen = findOpener(prefix, scanIdx, flags, -1);
     if (matchingOpen !== -1) {
       return getIndentationAt(prefix, matchingOpen);
     }
@@ -193,21 +188,21 @@ export function calculateIndentation(prefix: string): string {
   if (lastNewlineIdx !== -1 && lastLine.trim() === "") {
     return "";
   }
-  const { inString, ignored, comments } = getParseState(prefix, prefix.length);
+  const { inString, flags } = parse(prefix);
   if (inString) {
       return "";
   }
-  const openParenIdx = findOpener(prefix, prefix.length - 1, ignored);
+  const openParenIdx = findOpener(prefix, prefix.length - 1, flags);
   if (openParenIdx === -1) {
-    return getTopLevelIndentation(prefix, ignored);
+    return getTopLevelIndentation(prefix, flags);
   }
   if (openParenIdx < lastNewlineIdx) {
-    const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, ignored, lastNewlineIdx + 1);
+    const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags, lastNewlineIdx + 1);
     if (scanIdx !== -1 && !isClosingDelimiter(prefix[scanIdx])) {
       return getIndentation(lastLine);
     }
   }
-  return getFormIndentation(prefix, openParenIdx, ignored, comments);
+  return getFormIndentation(prefix, openParenIdx, flags);
 }
 
 function smartIndent(context: IndentContext, pos: number): number | null {
