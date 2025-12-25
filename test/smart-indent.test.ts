@@ -132,25 +132,11 @@ describe("Clojure Smart Indent", () => {
   });
 
   it("should never indent after a line with only whitespace", () => {
-    assertSmartIndent(
-`(let [x 1]
-
-
-|`,
-`(let [x 1]
-
-       |`
-    );
+    assertSmartIndent('(let [x 1]\n    \n|',
+                      '(let [x 1]\n    |');
   });
   it("should never indent after a line with only whitespace before the cursor", () => {
-    assertSmartIndent(
-`(let [x 1]
-
-
-|xyz`,
-`(let [x 1]
-
-       |xyz`
-    );
+    assertSmartIndent('(let [x 1]\n    \n|xyz',
+                      '(let [x 1]\n    |xyz');
   });
 });
