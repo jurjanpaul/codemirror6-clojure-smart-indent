@@ -45,14 +45,16 @@ function getIndentationAt(text: string, index: number): string {
   return getIndentation(getLineAt(text, index));
 }
 
-function getParseState(text: string, index: number): { inString: boolean, inComment: boolean, ignored: boolean[] } {
+function getParseState(text: string, index: number): { inString: boolean, inComment: boolean, ignored: boolean[], comments: boolean[] } {
   const ignored = new Array(index).fill(false);
+  const comments = new Array(index).fill(false);
   let inString = false;
   let inComment = false;
   for (let i = 0; i < index; i++) {
     const char = text[i];
     if (inComment) {
       ignored[i] = true;
+      comments[i] = true;
       if (char === '\n') inComment = false;
       continue;
     }
@@ -66,10 +68,11 @@ function getParseState(text: string, index: number): { inString: boolean, inComm
       inString = true;
     } else if (char === ';') {
       ignored[i] = true;
+      comments[i] = true;
       inComment = true;
     }
   }
-  return { inString, inComment, ignored };
+  return { inString, inComment, ignored, comments };
 }
 
 function isOpeningDelimiter(char: string): boolean {
@@ -104,45 +107,68 @@ function findOpener(text: string, index: number, ignored: boolean[], depth: numb
   });
 }
 
-function getFirstElementCol(prefix: string, startIdx: number): number | null {
-  const rest = prefix.slice(startIdx);
-  const match = rest.match(/^[ \t]+([^\s])/);
-  if (match) {
-    return getColumn(prefix, startIdx + rest.indexOf(match[1]));
+function getFirstElementCol(prefix: string, startIdx: number, comments: boolean[]): number | null {
+  for (let i = startIdx; i < prefix.length; i++) {
+    if (prefix[i] === "\n") return null;
+    if (comments[i]) continue;
+    if (!/\s/.test(prefix[i])) return getColumn(prefix, i);
   }
   return null;
 }
 
-function getFormIndentation(prefix: string, openParenIdx: number): string {
+function getFormIndentation(prefix: string, openParenIdx: number, ignored: boolean[], comments: boolean[]): string {
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
-  const rest = prefix.slice(openParenIdx + 1);
-  let rule: IndentRule = IndentRule.Inner;
-  let alignStartIdx = -1;
-  let fallback: IndentRule = IndentRule.Inner;
-  if (openChar === "(") {
-    const symbolMatch = rest.match(/^([^\s\(\)\[\]\{\}]+)/);
-    if (symbolMatch) {
-      const symbolName = symbolMatch[1];
-      if (BODY_FORMS.has(symbolName)) {
-        rule = IndentRule.Body;
-      } else {
-        rule = IndentRule.Align;
-        alignStartIdx = openParenIdx + 1 + symbolName.length;
-        fallback = IndentRule.Body;
+  
+  let firstElemIdx = -1;
+  for (let i = openParenIdx + 1; i < prefix.length; i++) {
+    if (prefix[i] === "\n") break;
+    if (!/\s/.test(prefix[i]) && !comments[i]) { firstElemIdx = i; break; }
+  }
+
+  if (firstElemIdx === -1) {
+    return " ".repeat(openCol + IndentRule.Inner);
+  }
+
+  let firstElemEndIdx = -1;
+  if (prefix[firstElemIdx] === '"') {
+    for (let i = firstElemIdx + 1; i < prefix.length; i++) {
+       if (prefix[i] === '"' && (i === 0 || prefix[i-1] !== "\\")) { firstElemEndIdx = i + 1; break; }
+    }
+  } else if (isOpeningDelimiter(prefix[firstElemIdx])) {
+    let depth = 0;
+    for (let i = firstElemIdx; i < prefix.length; i++) {
+      if (comments[i]) continue;
+      if (isOpeningDelimiter(prefix[i])) depth++;
+      else if (isClosingDelimiter(prefix[i])) {
+        depth--;
+        if (depth === 0) { firstElemEndIdx = i + 1; break; }
       }
     }
   } else {
-    rule = IndentRule.Align;
-    alignStartIdx = openParenIdx + 1;
-    fallback = IndentRule.Inner;
+    for (let i = firstElemIdx; i < prefix.length; i++) {
+      if (comments[i] || /\s|\(|\)|\[|\]|\{|\}/.test(prefix[i])) { firstElemEndIdx = i; break; }
+    }
   }
-  if (rule === IndentRule.Align) {
-    const alignCol = getFirstElementCol(prefix, alignStartIdx);
-    if (alignCol !== null) return " ".repeat(alignCol);
-    rule = fallback;
+  if (firstElemEndIdx === -1) firstElemEndIdx = prefix.length;
+
+  const secondElemCol = getFirstElementCol(prefix, firstElemEndIdx, comments);
+
+  if (openChar === "(") {
+    if (!ignored[firstElemIdx] && !isOpeningDelimiter(prefix[firstElemIdx]) && prefix[firstElemIdx] !== '"') {
+      const symbol = prefix.slice(firstElemIdx, firstElemEndIdx);
+      if (BODY_FORMS.has(symbol)) {
+        return " ".repeat(openCol + IndentRule.Body);
+      }
+      if (secondElemCol !== null) return " ".repeat(secondElemCol);
+      return " ".repeat(openCol + IndentRule.Body);
+    }
+    if (secondElemCol !== null) return " ".repeat(secondElemCol);
+    return " ".repeat(openCol + IndentRule.Inner);
   }
-  return " ".repeat(openCol + rule);
+
+  if (secondElemCol !== null) return " ".repeat(secondElemCol);
+  return " ".repeat(openCol + IndentRule.Inner);
 }
 
 function getTopLevelIndentation(prefix: string, ignored: boolean[]): string {
@@ -167,7 +193,7 @@ export function calculateIndentation(prefix: string): string {
   if (lastNewlineIdx !== -1 && lastLine.trim() === "") {
     return "";
   }
-  const { inString, ignored } = getParseState(prefix, prefix.length);
+  const { inString, ignored, comments } = getParseState(prefix, prefix.length);
   if (inString) {
       return "";
   }
@@ -181,7 +207,7 @@ export function calculateIndentation(prefix: string): string {
       return getIndentation(lastLine);
     }
   }
-  return getFormIndentation(prefix, openParenIdx);
+  return getFormIndentation(prefix, openParenIdx, ignored, comments);
 }
 
 function smartIndent(context: IndentContext, pos: number): number | null {
