@@ -25,26 +25,6 @@ enum IndentRule {
   Align = 0
 }
 
-export function clojureSmartIndent(buffer: string, cursor: number): IndentResult {
-  let prefix = buffer.slice(0, cursor);
-  const suffix = buffer.slice(cursor);
-  const { inString, ignored } = getParseState(prefix, prefix.length);
-  if (!inString) {
-    const lastNewlineIdx = prefix.lastIndexOf("\n");
-    const currentLine = prefix.slice(lastNewlineIdx + 1);
-    if (currentLine.length > 0 && currentLine.trim() === "") {
-      prefix = prefix.slice(0, lastNewlineIdx + 1);
-      cursor = prefix.length;
-    }
-  }
-  const indentation = calculateIndentation(prefix, inString, ignored);
-  const newNewlineAndIndent = "\n" + indentation;
-  return {
-    buffer: prefix + newNewlineAndIndent + suffix,
-    cursor: cursor + newNewlineAndIndent.length
-  };
-}
-
 function getColumn(text: string, index: number): number {
   const lastNewline = text.lastIndexOf("\n", index);
   return index - (lastNewline === -1 ? 0 : lastNewline + 1);
@@ -181,12 +161,13 @@ function getTopLevelIndentation(prefix: string, ignored: boolean[]): string {
   return getIndentation(currentLine);
 }
 
-export function calculateIndentation(prefix: string, inString: boolean, ignored: boolean[]): string {
+export function calculateIndentation(prefix: string): string {
   const lastNewlineIdx = prefix.lastIndexOf("\n");
   const lastLine = prefix.slice(lastNewlineIdx + 1);
   if (lastNewlineIdx !== -1 && lastLine.trim() === "") {
     return "";
   }
+  const { inString, ignored } = getParseState(prefix, prefix.length);
   if (inString) {
       return "";
   }
@@ -205,8 +186,7 @@ export function calculateIndentation(prefix: string, inString: boolean, ignored:
 
 function smartIndent(context: IndentContext, pos: number): number | null {
   const prefix = context.state.doc.sliceString(0, pos);
-  const { inString, ignored } = getParseState(prefix, prefix.length);
-  const indentationString = calculateIndentation(prefix, inString, ignored);
+  const indentationString = calculateIndentation(prefix);
   return indentationString.length;
 }
 

@@ -1,7 +1,7 @@
 import { expect } from "chai";
-import { clojureSmartIndent } from "../ts/cm6-clj-smart-indent.js";
+import { calculateIndentation } from "../ts/cm6-clj-smart-indent.js";
 
-function parse(input: string) {
+function parseInput(input: string) {
   const cursor = input.indexOf("|");
   if (cursor === -1) throw new Error("Missing cursor marker '|'");
   return {
@@ -10,14 +10,18 @@ function parse(input: string) {
   };
 }
 
-function format(buffer: string, cursor: number) {
+function formatOutput(buffer: string, cursor: number) {
   return buffer.slice(0, cursor) + "|" + buffer.slice(cursor);
 }
 
 function assertSmartIndent(expected: string, input: string) {
-  const { buffer, cursor } = parse(input);
-  const result = clojureSmartIndent(buffer, cursor);
-  const actual = format(result.buffer, result.cursor);
+  const { buffer, cursor } = parseInput(input);
+  const prefix = buffer.slice(0, cursor);
+  const indentation = calculateIndentation(prefix);
+  const newNewlineAndIndent = "\n" + indentation;
+  const suffix = buffer.slice(cursor);
+  const actual = formatOutput(prefix + newNewlineAndIndent + suffix,
+                              cursor + newNewlineAndIndent.length);
   expect(actual).to.equal(expected);
 }
 
