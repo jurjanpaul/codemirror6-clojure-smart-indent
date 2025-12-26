@@ -87,7 +87,7 @@ function isClosingDelimiter(char: string): boolean {
 function findBackwards(text: string, index: number, minIndex: number, flags: Uint8Array, pred: (char: string) => boolean | void): number {
   for (let i = index; i >= minIndex; i--) {
     if (flags[i] & FLAG_IGNORED) continue;
-    if (pred(text[i], i)) return i;
+    if (pred(text[i])) return i;
   }
   return -1;
 }
@@ -185,9 +185,6 @@ function getTopLevelIndentation(prefix: string, flags: Uint8Array): string {
 export function calculateIndentation(prefix: string): string {
   const lastNewlineIdx = prefix.lastIndexOf("\n");
   const lastLine = prefix.slice(lastNewlineIdx + 1);
-  if (lastNewlineIdx !== -1 && lastLine.trim() === "") {
-    return "";
-  }
   const { inString, flags } = parse(prefix);
   if (inString) {
       return "";

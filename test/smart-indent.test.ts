@@ -18,10 +18,19 @@ function assertSmartIndent(expected: string, input: string) {
   const { buffer, cursor } = parseInput(input);
   const prefix = buffer.slice(0, cursor);
   const indentation = calculateIndentation(prefix);
+
+  // Simulate behavior where pressing Enter on a whitespace-only line removes that whitespace
+  const lastNewline = prefix.lastIndexOf('\n');
+  const lastLine = prefix.slice(lastNewline + 1);
+  let processedPrefix = prefix;
+  if (lastNewline !== -1 && lastLine.trim() === "") {
+      processedPrefix = prefix.slice(0, lastNewline + 1);
+  }
+
   const newNewlineAndIndent = "\n" + indentation;
   const suffix = buffer.slice(cursor);
-  const actual = formatOutput(prefix + newNewlineAndIndent + suffix,
-                              cursor + newNewlineAndIndent.length);
+  const actual = formatOutput(processedPrefix + newNewlineAndIndent + suffix,
+                              processedPrefix.length + newNewlineAndIndent.length);
   expect(actual).to.equal(expected);
 }
 
@@ -119,24 +128,17 @@ describe("Clojure Smart Indent", () => {
     );
   });
 
-  it("should never indent after a blank line", () => {
+  it("should apply proper indentation based on previous lines after a blank line", () => {
     assertSmartIndent(
 `(let [x 1]
 
-
-|`,
+  |`,
 `(let [x 1]
-
-|`
+    |`
     );
   });
-
-  it("should never indent after a line with only whitespace", () => {
-    assertSmartIndent('(let [x 1]\n    \n|',
-                      '(let [x 1]\n    |');
-  });
-  it("should never indent after a line with only whitespace before the cursor", () => {
-    assertSmartIndent('(let [x 1]\n    \n|xyz',
+  it("should apply proper indentation based on previous lines after a line with only whitespace before the cursor", () => {
+    assertSmartIndent('(let [x 1]\n\n  |xyz',
                       '(let [x 1]\n    |xyz');
   });
 });
