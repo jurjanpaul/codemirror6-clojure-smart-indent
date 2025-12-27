@@ -1,82 +1,16 @@
 import type { IndentContext } from "@codemirror/language"
 import type { Extension, Facet } from "@codemirror/state"
 
-export interface IndentResult {
-  buffer: string;
-  cursor: number;
-}
-
-interface IndentStrategy {
-  type: "body" | "align";
-  count: number;
-}
-
-const INDENT_RULES: Record<string, IndentStrategy> = {
-  "->": { type: "align", count: 1 },
-  "->>": { type: "align", count: 1 },
-  "as->": { type: "body", count: 2 },
-  "binding": { type: "body", count: 1 },
-  "bound-fn": { type: "body", count: 1 },
-  "case": { type: "body", count: 1 },
-  "catch": { type: "body", count: 2 },
-  "comment": { type: "body", count: 0 },
-  "cond": { type: "body", count: 0 },
-  "cond->": { type: "body", count: 1 },
-  "cond->>": { type: "body", count: 1 },
-  "condp": { type: "body", count: 2 },
-  "def": { type: "body", count: 1 },
-  "definterface": { type: "body", count: 1 },
-  "defmethod": { type: "body", count: 2 },
-  "defn": { type: "body", count: 1 },
-  "defn-": { type: "body", count: 1 },
-  "defmacro": { type: "body", count: 1 },
-  "defprotocol": { type: "body", count: 1 },
-  "defrecord": { type: "body", count: 2 },
-  "defstruct": { type: "body", count: 1 },
-  "deftype": { type: "body", count: 2 },
-  "do": { type: "body", count: 0 },
-  "doseq": { type: "body", count: 1 },
-  "dotimes": { type: "body", count: 1 },
-  "doto": { type: "body", count: 1 },
-  "extend": { type: "body", count: 1 },
-  "extend-protocol": { type: "body", count: 1 },
-  "extend-type": { type: "body", count: 1 },
-  "fn": { type: "body", count: 1 },
-  "for": { type: "body", count: 1 },
-  "future": { type: "body", count: 0 },
-  "if": { type: "body", count: 1 },
-  "if-let": { type: "body", count: 1 },
-  "if-not": { type: "body", count: 1 },
-  "if-some": { type: "body", count: 1 },
-  "let": { type: "body", count: 1 },
-  "letfn": { type: "body", count: 1 },
-  "locking": { type: "body", count: 1 },
-  "loop": { type: "body", count: 1 },
-  "ns": { type: "body", count: 1 },
-  "proxy": { type: "body", count: 2 },
-  "reify": { type: "body", count: 1 },
-  "struct-map": { type: "body", count: 1 },
-  "some->": { type: "body", count: 1 },
-  "some->>": { type: "body", count: 1 },
-  "try": { type: "body", count: 0 },
-  "when": { type: "body", count: 1 },
-  "when-first": { type: "body", count: 1 },
-  "when-let": { type: "body", count: 1 },
-  "when-not": { type: "body", count: 1 },
-  "when-some": { type: "body", count: 1 },
-  "while": { type: "body", count: 1 },
-  "with-bindings": { type: "body", count: 1 },
-  "with-bindings*": { type: "body", count: 1 },
-  "with-in-str": { type: "body", count: 1 },
-  "with-loading-context": { type: "body", count: 1 },
-  "with-local-vars": { type: "body", count: 1 },
-  "with-meta": { type: "body", count: 1 },
-  "with-open": { type: "body", count: 1 },
-  "with-out-str": { type: "body", count: 0 },
-  "with-precision": { type: "body", count: 1 },
-  "with-redefs": { type: "body", count: 1 },
-  "with-redefs-fn": { type: "body", count: 1 }
-};
+const BODY_FORMS = new Set([
+  "as->", "binding", "bound-fn", "case", "catch", "comment", "cond", "cond->", "cond->>", "condp",
+  "def", "definterface", "defmethod", "defn", "defn-", "defmacro", "defprotocol", "defrecord",
+  "defstruct", "deftype", "do", "doseq", "dotimes", "doto", "extend", "extend-protocol",
+  "extend-type", "fn", "for", "future", "if", "if-let", "if-not", "if-some", "let", "letfn",
+  "locking", "loop", "ns", "proxy", "reify", "struct-map", "some->", "some->>", "try", "when",
+  "when-first", "when-let", "when-not", "when-some", "while", "with-bindings", "with-bindings*",
+  "with-in-str", "with-loading-context", "with-local-vars", "with-meta", "with-open", "with-out-str",
+  "with-precision", "with-redefs", "with-redefs-fn"
+]);
 
 const BODY_INDENT_WIDTH = 2;
 
@@ -209,43 +143,18 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Uint8Ar
     }
   }
   const symbol = prefix.slice(firstElemIdx, firstElemEnd);
-  const rule = INDENT_RULES[symbol] || { type: "align", count: 1 };
-  let argIndex = 0;
-  let targetArgCol = -1;
-  let firstArgColOnSameLine = -1;
-  let curr = firstElemIdx;
-  const openLineNum = prefix.lastIndexOf("\n", openParenIdx);
-  while (curr < prefix.length) {
-    const start = findForward(prefix, curr, prefix.length - 1, flags, (c) => !/\s/.test(c), false);
-    if (start === -1) break;
-    const startLineNum = prefix.lastIndexOf("\n", start);
-    if (argIndex === 1 && startLineNum === openLineNum) firstArgColOnSameLine = getColumn(prefix, start);
-    if (argIndex === rule.count) targetArgCol = getColumn(prefix, start);
-    if (isOpeningDelimiter(prefix[start])) {
-      const closing = findClosing(prefix, start + 1, flags);
-      curr = closing === -1 ? prefix.length : closing + 1;
-    } else if (isClosingDelimiter(prefix[start])) {
-      break;
-    } else if (prefix[start] === '"') {
-       let i = start + 1;
-       while (i < prefix.length && (prefix[i] !== '"' || prefix[i-1] === '\\')) i++;
-       curr = i + 1;
-    } else {
-      let i = start;
-      while (i < prefix.length && !/\s|\(|\)|\[|\]|\{|\}/.test(prefix[i])) i++;
-      curr = i;
-    }
-    argIndex++;
-  }
-  if (rule.type === "body") {
+  if (BODY_FORMS.has(symbol)) {
     return " ".repeat(openCol + BODY_INDENT_WIDTH);
-  } else {
-    let indent = -1;
-    if (argIndex > rule.count && targetArgCol !== -1) indent = targetArgCol;
-    else if (firstArgColOnSameLine !== -1) indent = firstArgColOnSameLine;
-    else indent = openCol + BODY_INDENT_WIDTH;
-    return " ".repeat(indent);
   }
+  const openLineNum = prefix.lastIndexOf("\n", openParenIdx);
+  const firstArgIdx = findForward(prefix, firstElemEnd, prefix.length - 1, flags, (c) => !/\s/.test(c), false);
+  if (firstArgIdx !== -1) {
+    const firstArgLineNum = prefix.lastIndexOf("\n", firstArgIdx);
+    if (firstArgLineNum === openLineNum) {
+      return " ".repeat(getColumn(prefix, firstArgIdx));
+    }
+  }
+  return " ".repeat(openCol + BODY_INDENT_WIDTH);
 }
 
 function getTopLevelIndentation(prefix: string, flags: Uint8Array): string {
