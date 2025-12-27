@@ -134,4 +134,9 @@ describe("Clojure Smart Indent", () => {
     assertSmartIndent("(defn foo []\n  \\(\n  |)",
                       "(defn foo []\n  \\(\n  |)");
   });
+
+  it("should ignore comments when looking for the first argument to align with", () => {
+    assertSmartIndent("(foo ; comment\n  |)",
+                      "(foo ; comment|)");
+  });
 });
