@@ -34,13 +34,22 @@ function getIndentationAt(text: string, index: number): string {
   return getIndentation(getLineAt(text, index));
 }
 
+function isWhitespace(c: string): boolean {
+  return c === " " || c === "," || c === "\n" || c === "\r" || c === "\t";
+}
+
 const FLAG_IGNORED = 1;
 const FLAG_COMMENT = 2;
+const FLAG_STRING = 4;
 
-function parse(text: string): { inString: boolean, inComment: boolean, flags: Uint8Array } {
+function inString(flags: Uint8Array, index: number): boolean {
+  return index >= 0 && index < flags.length && (flags[index] & FLAG_STRING) !== 0;
+}
+
+function parse(text: string): Uint8Array {
   const size = text.length;
   const flags = new Uint8Array(size);
-  let inString = false;
+  let inStringState = false;
   let inComment = false;
   let escaped = false;
   for (let i = 0; i < size; i++) {
@@ -48,28 +57,25 @@ function parse(text: string): { inString: boolean, inComment: boolean, flags: Ui
     if (inComment) {
       flags[i] = FLAG_IGNORED | FLAG_COMMENT;
       if (char === '\n') inComment = false;
-      continue;
-    }
-    if (inString) {
+    } else if (escaped) {
       flags[i] = FLAG_IGNORED;
-      if (escaped) {
-        escaped = false;
-      } else if (char === '\\') {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (char === '"' && (i === 0 || text[i-1] !== '\\')) {
+      escaped = false;
+    } else if (char === '\\') {
+      if (inStringState) flags[i] = FLAG_IGNORED;
+      escaped = true;
+    } else if (inStringState) {
       flags[i] = FLAG_IGNORED;
-      inString = true;
+      if (char === '"') inStringState = false;
+    } else if (char === '"') {
+      inStringState = true;
+      flags[i] = FLAG_IGNORED;
     } else if (char === ';') {
-      flags[i] = FLAG_IGNORED | FLAG_COMMENT;
       inComment = true;
+      flags[i] = FLAG_IGNORED | FLAG_COMMENT;
     }
+    if (inStringState) flags[i] |= FLAG_STRING;
   }
-  return { inString, inComment, flags };
+  return flags;
 }
 
 function isOpeningDelimiter(char: string): boolean {
@@ -96,7 +102,7 @@ function findForward(text: string, index: number, maxIndex: number, flags: Uint8
 }
 
 function findLastSignificantCharIdx(text: string, index: number, flags: Uint8Array, minIndex: number = 0): number {
-  return findBackwards(text, index, minIndex, flags, (char) => !/\s/.test(char));
+  return findBackwards(text, index, minIndex, flags, (char) => !isWhitespace(char));
 }
 
 function findOpener(text: string, index: number, flags: Uint8Array, depth: number = 0): number {
@@ -127,7 +133,7 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Uint8Ar
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
   if (openChar !== "(") return " ".repeat(openCol + 1);
-  const firstElemIdx = findForward(prefix, openParenIdx + 1, prefix.length - 1, flags, (c) => !/\s/.test(c), false);
+  const firstElemIdx = findForward(prefix, openParenIdx + 1, prefix.length - 1, flags, (c) => !isWhitespace(c), false);
   if (firstElemIdx === -1) return " ".repeat(openCol + 1);
   let firstElemEnd = firstElemIdx;
   if (isOpeningDelimiter(prefix[firstElemIdx])) {
@@ -135,7 +141,7 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Uint8Ar
     firstElemEnd = closing === -1 ? prefix.length : closing + 1;
   } else {
     for (let i = firstElemIdx; i < prefix.length; i++) {
-      if (/\s|\(|\)|\[|\]|\{|\}/.test(prefix[i]) && !(prefix[i] === '"' && i > firstElemIdx)) {
+      if ((isWhitespace(prefix[i]) || isOpeningDelimiter(prefix[i]) || isClosingDelimiter(prefix[i])) && !(prefix[i] === '"' && i > firstElemIdx)) {
         firstElemEnd = i;
         break;
       }
@@ -147,7 +153,7 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Uint8Ar
     return " ".repeat(openCol + BODY_INDENT_WIDTH);
   }
   const openLineNum = prefix.lastIndexOf("\n", openParenIdx);
-  const firstArgIdx = findForward(prefix, firstElemEnd, prefix.length - 1, flags, (c) => !/\s/.test(c), false);
+  const firstArgIdx = findForward(prefix, firstElemEnd, prefix.length - 1, flags, (c) => !isWhitespace(c), false);
   if (firstArgIdx !== -1) {
     const firstArgLineNum = prefix.lastIndexOf("\n", firstArgIdx);
     if (firstArgLineNum === openLineNum) {
@@ -157,36 +163,39 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Uint8Ar
   return " ".repeat(openCol + BODY_INDENT_WIDTH);
 }
 
-function getTopLevelIndentation(prefix: string, flags: Uint8Array): string {
-  const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags);
-  if (scanIdx >= 0 && isClosingDelimiter(prefix[scanIdx])) {
-    const matchingOpen = findOpener(prefix, scanIdx, flags, -1);
+function getDedentation(prefix: string, flags: Uint8Array): string | undefined {
+  const lastCharIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags);
+  if (lastCharIdx >= 0 && isClosingDelimiter(prefix[lastCharIdx])) {
+    const matchingOpen = findOpener(prefix, lastCharIdx, flags, -1);
     if (matchingOpen !== -1) {
       return getIndentationAt(prefix, matchingOpen);
     }
   }
-  const lastNewline = prefix.lastIndexOf("\n");
-  const currentLine = lastNewline === -1 ? prefix : prefix.slice(lastNewline + 1);
-  if (currentLine.trim() === "" && lastNewline !== -1) {
-    return getIndentationAt(prefix, lastNewline);
-  }
-  return getIndentation(currentLine);
 }
 
 export function calculateIndentation(prefix: string): string {
   const lastNewlineIdx = prefix.lastIndexOf("\n");
   const lastLine = prefix.slice(lastNewlineIdx + 1);
-  const { inString, flags } = parse(prefix);
-  if (inString) {
+  const flags = parse(prefix);
+  if (inString(flags, flags.length - 1)) {
       return "";
   }
   const openParenIdx = findOpener(prefix, prefix.length - 1, flags);
   if (openParenIdx === -1) {
-    return getTopLevelIndentation(prefix, flags);
+    const dedentIndent = getDedentation(prefix, flags);
+    if (dedentIndent !== undefined) {
+      return dedentIndent;
+    }
+    const isCurrentLineBlank = lastLine.trim().length === 0;
+    const hasPreviousLine = lastNewlineIdx !== -1;
+    if (isCurrentLineBlank && hasPreviousLine) {
+      return getIndentationAt(prefix, lastNewlineIdx);
+    }
+    return getIndentation(lastLine);
   }
   if (openParenIdx < lastNewlineIdx) {
-    const scanIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags, lastNewlineIdx + 1);
-    if (scanIdx !== -1 && !isClosingDelimiter(prefix[scanIdx])) {
+    const lastCharOnLineIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags, lastNewlineIdx + 1);
+    if (lastCharOnLineIdx !== -1 && !isClosingDelimiter(prefix[lastCharOnLineIdx])) {
       return getIndentation(lastLine);
     }
   }

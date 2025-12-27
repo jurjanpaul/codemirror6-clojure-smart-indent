@@ -129,4 +129,9 @@ describe("Clojure Smart Indent", () => {
     assertSmartIndent('(let [x "\\\\"]\n  |)',
                       '(let [x "\\\\"]\n  |)');
   });
+
+  it("should ignore character literals like \\(", () => {
+    assertSmartIndent("(defn foo []\n  \\(\n  |)",
+                      "(defn foo []\n  \\(\n  |)");
+  });
 });
