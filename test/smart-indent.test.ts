@@ -40,6 +40,11 @@ describe("Clojure Smart Indent", () => {
                       "(foo bar |)");
   });
 
+  it("should align immediately after the opening paren if no second element on first line", () => {
+    assertSmartIndent("(foo\n |)",
+                      "(foo|)");
+  });
+
   it("should indent by 2 for body forms if no args on same line", () => {
     assertSmartIndent("(let \n  |",
                       "(let |");
@@ -65,9 +70,9 @@ describe("Clojure Smart Indent", () => {
                       "(defn foo [] ; ignore )|");
   });
 
-  it("should respect manual indentation from previous line", () => {
-    assertSmartIndent("(foo\n    bar\n    |)",
-                      "(foo\n    bar|)");
+  it("should preserve manual indentation from previous line", () => {
+    assertSmartIndent("(foo\n      bar\n      |)",
+                      "(foo\n      bar|)");
   });
 
   it("should dedent after closing a form", () => {

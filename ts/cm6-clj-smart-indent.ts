@@ -167,9 +167,9 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags):
   return " ".repeat(openCol + BODY_INDENT_WIDTH);
 }
 
-function getDedentation(prefix: string, flags: Flags, lastCharIdx: number): string | undefined {
-  if (lastCharIdx >= 0 && isClosingDelimiter(prefix[lastCharIdx])) {
-    const matchingOpen = findOpener(prefix, lastCharIdx, flags, -1);
+function getDedentation(prefix: string, flags: Flags, lastSignificantCharIdx: number): string | undefined {
+  if (isClosingDelimiter(prefix[lastSignificantCharIdx])) {
+    const matchingOpen = findOpener(prefix, lastSignificantCharIdx, flags, -1);
     if (matchingOpen !== -1) {
       return getIndentationAt(prefix, matchingOpen);
     }
@@ -185,16 +185,18 @@ export function calculateIndentation(prefix: string): string {
     return "";
   }
   const lastSignificantCharIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags);
+  if (lastSignificantCharIdx === -1) {
+    return "";
+  }
+  const lastSignificantLineStart = prefix.lastIndexOf("\n", lastSignificantCharIdx);
   const lastNewlineIdx = prefix.lastIndexOf("\n");
   const currentLine = prefix.slice(lastNewlineIdx + 1);
   const isCurrentLineBlank = currentLine.trim().length === 0;
-  const openParenIdx = findOpener(prefix, prefix.length - 1, flags);
+  const openParenIdx = findOpener(prefix, lastSignificantCharIdx, flags);
   if (openParenIdx === -1) {
     const dedentIndent = getDedentation(prefix, flags, lastSignificantCharIdx);
-    if (dedentIndent !== undefined) {
-      return dedentIndent;
-    }
-    if (isCurrentLineBlank && lastSignificantCharIdx !== -1) {
+    if (dedentIndent !== undefined) return dedentIndent;
+    if (isCurrentLineBlank) {
       return getIndentationAt(prefix, lastSignificantCharIdx);
     }
     return getIndentation(currentLine);
@@ -206,10 +208,9 @@ export function calculateIndentation(prefix: string): string {
       }
     } else if (isCurrentLineBlank && lastSignificantCharIdx > openParenIdx) {
       const openerLineStart = prefix.lastIndexOf("\n", openParenIdx);
-      const lastSigLineStart = prefix.lastIndexOf("\n", lastSignificantCharIdx);
-      if (lastSigLineStart > openerLineStart) {
-        const dedent = getDedentation(prefix, flags, lastSignificantCharIdx);
-        if (dedent !== undefined) return dedent;
+      if (lastSignificantLineStart > openerLineStart) {
+        const dedentIndent = getDedentation(prefix, flags, lastSignificantCharIdx);
+        if (dedentIndent !== undefined) return dedentIndent;
         return getIndentationAt(prefix, lastSignificantCharIdx);
       }
     }
