@@ -15,14 +15,12 @@ function formatOutput(buffer: string, cursor: number) {
 }
 
 function assertSmartIndent(expected: string, input: string) {
-  const { buffer, cursor } = parseInput(input);
-  const prefix = buffer.slice(0, cursor);
-  const actualIndentation = calculateIndentation(prefix);
-
   const { buffer: expectedBuffer, cursor: expectedCursor } = parseInput(expected);
   const lastNewline = expectedBuffer.lastIndexOf('\n', expectedCursor);
   const expectedIndentation = expectedBuffer.slice(lastNewline + 1, expectedCursor);
-
+  const { buffer, cursor } = parseInput(input);
+  const prefix = buffer.slice(0, cursor);
+  const actualIndentation = calculateIndentation(prefix);
   expect(actualIndentation).to.equal(expectedIndentation, `Indentation mismatch for input:\n${input}`);
 }
 
@@ -101,8 +99,34 @@ describe("Clojure Smart Indent", () => {
     assertSmartIndent("(let [x 1]\n\n  |",
                       "(let [x 1]\n    |");
   });
+
   it("should apply proper indentation based on previous lines after a line with only whitespace before the cursor", () => {
     assertSmartIndent('(let [x 1]\n\n  |xyz',
                       '(let [x 1]\n    |xyz');
+  });
+
+  it("should align ->> forms with the first argument if present", () => {
+    assertSmartIndent("(->> data\n     |)",
+                      "(->> data|)");
+  });
+
+  it("should indent ->> body by 2 spaces if there is no first argument yet", () => {
+    assertSmartIndent("(->>\n  |)",
+                      "(->>|)");
+  });
+
+  it("should indent ->> body by 2 spaces if first argument is on next line", () => {
+    assertSmartIndent("(->>\n  data\n  |)",
+                      "(->>\n  data|)");
+  });
+
+  it("should align subsequent forms with the first argument even if it was on a new line", () => {
+     assertSmartIndent("(->>\n  data\n  (map inc)\n  |)",
+                       "(->>\n  data\n  (map inc)|)");
+  });
+
+  it("should handle escaped backslashes correctly", () => {
+    assertSmartIndent('(let [x "\\\\"]\n  |)',
+                      '(let [x "\\\\"]\n  |)');
   });
 });

@@ -6,24 +6,79 @@ export interface IndentResult {
   cursor: number;
 }
 
-const BODY_FORMS = new Set([
-  "->", "->>", "as->", "binding", "bound-fn", "case", "catch", "comment",
-  "cond", "cond->", "cond->>", "condp", "def", "definterface", "defmethod",
-  "defn", "defn-", "defmacro", "defprotocol", "defrecord", "defstruct",
-  "deftype", "do", "doseq", "dotimes", "doto", "extend", "extend-protocol",
-  "extend-type", "fn", "for", "future", "if", "if-let", "if-not", "if-some",
-  "let", "letfn", "locking", "loop", "ns", "proxy", "reify", "struct-map",
-  "some->", "some->>", "try", "when", "when-first", "when-let", "when-not",
-  "when-some", "while", "with-bindings", "with-bindings*", "with-in-str",
-  "with-loading-context", "with-local-vars", "with-meta", "with-open",
-  "with-out-str", "with-precision", "with-redefs", "with-redefs-fn"
-]);
-
-enum IndentRule {
-  Body = 2,
-  Inner = 1,
-  Align = 0
+interface IndentStrategy {
+  type: "body" | "align";
+  count: number;
 }
+
+const INDENT_RULES: Record<string, IndentStrategy> = {
+  "->": { type: "align", count: 1 },
+  "->>": { type: "align", count: 1 },
+  "as->": { type: "body", count: 2 },
+  "binding": { type: "body", count: 1 },
+  "bound-fn": { type: "body", count: 1 },
+  "case": { type: "body", count: 1 },
+  "catch": { type: "body", count: 2 },
+  "comment": { type: "body", count: 0 },
+  "cond": { type: "body", count: 0 },
+  "cond->": { type: "body", count: 1 },
+  "cond->>": { type: "body", count: 1 },
+  "condp": { type: "body", count: 2 },
+  "def": { type: "body", count: 1 },
+  "definterface": { type: "body", count: 1 },
+  "defmethod": { type: "body", count: 2 },
+  "defn": { type: "body", count: 1 },
+  "defn-": { type: "body", count: 1 },
+  "defmacro": { type: "body", count: 1 },
+  "defprotocol": { type: "body", count: 1 },
+  "defrecord": { type: "body", count: 2 },
+  "defstruct": { type: "body", count: 1 },
+  "deftype": { type: "body", count: 2 },
+  "do": { type: "body", count: 0 },
+  "doseq": { type: "body", count: 1 },
+  "dotimes": { type: "body", count: 1 },
+  "doto": { type: "body", count: 1 },
+  "extend": { type: "body", count: 1 },
+  "extend-protocol": { type: "body", count: 1 },
+  "extend-type": { type: "body", count: 1 },
+  "fn": { type: "body", count: 1 },
+  "for": { type: "body", count: 1 },
+  "future": { type: "body", count: 0 },
+  "if": { type: "body", count: 1 },
+  "if-let": { type: "body", count: 1 },
+  "if-not": { type: "body", count: 1 },
+  "if-some": { type: "body", count: 1 },
+  "let": { type: "body", count: 1 },
+  "letfn": { type: "body", count: 1 },
+  "locking": { type: "body", count: 1 },
+  "loop": { type: "body", count: 1 },
+  "ns": { type: "body", count: 1 },
+  "proxy": { type: "body", count: 2 },
+  "reify": { type: "body", count: 1 },
+  "struct-map": { type: "body", count: 1 },
+  "some->": { type: "body", count: 1 },
+  "some->>": { type: "body", count: 1 },
+  "try": { type: "body", count: 0 },
+  "when": { type: "body", count: 1 },
+  "when-first": { type: "body", count: 1 },
+  "when-let": { type: "body", count: 1 },
+  "when-not": { type: "body", count: 1 },
+  "when-some": { type: "body", count: 1 },
+  "while": { type: "body", count: 1 },
+  "with-bindings": { type: "body", count: 1 },
+  "with-bindings*": { type: "body", count: 1 },
+  "with-in-str": { type: "body", count: 1 },
+  "with-loading-context": { type: "body", count: 1 },
+  "with-local-vars": { type: "body", count: 1 },
+  "with-meta": { type: "body", count: 1 },
+  "with-open": { type: "body", count: 1 },
+  "with-out-str": { type: "body", count: 0 },
+  "with-precision": { type: "body", count: 1 },
+  "with-redefs": { type: "body", count: 1 },
+  "with-redefs-fn": { type: "body", count: 1 }
+};
+
+const BODY_INDENT_WIDTH = 2;
 
 function getColumn(text: string, index: number): number {
   const lastNewline = text.lastIndexOf("\n", index);
@@ -53,6 +108,7 @@ function parse(text: string): { inString: boolean, inComment: boolean, flags: Ui
   const flags = new Uint8Array(size);
   let inString = false;
   let inComment = false;
+  let escaped = false;
   for (let i = 0; i < size; i++) {
     const char = text[i];
     if (inComment) {
@@ -62,7 +118,13 @@ function parse(text: string): { inString: boolean, inComment: boolean, flags: Ui
     }
     if (inString) {
       flags[i] = FLAG_IGNORED;
-      if (char === '"' && text[i-1] !== '\\') inString = false;
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
       continue;
     }
     if (char === '"' && (i === 0 || text[i-1] !== '\\')) {
@@ -84,9 +146,16 @@ function isClosingDelimiter(char: string): boolean {
   return char === ')' || char === ']' || char === '}';
 }
 
-function findBackwards(text: string, index: number, minIndex: number, flags: Uint8Array, pred: (char: string) => boolean | void): number {
+function findBackwards(text: string, index: number, minIndex: number, flags: Uint8Array, pred: (char: string) => boolean | void, skipIgnored: boolean = true): number {
   for (let i = index; i >= minIndex; i--) {
-    if (flags[i] & FLAG_IGNORED) continue;
+    if (skipIgnored && (flags[i] & FLAG_IGNORED)) continue;
+    if (pred(text[i])) return i;
+  }
+  return -1;
+}
+function findForward(text: string, index: number, maxIndex: number, flags: Uint8Array, pred: (char: string) => boolean | void, skipIgnored: boolean = true): number {
+  for (let i = index; i <= maxIndex; i++) {
+    if (skipIgnored && (flags[i] & FLAG_IGNORED)) continue;
     if (pred(text[i])) return i;
   }
   return -1;
@@ -108,62 +177,75 @@ function findOpener(text: string, index: number, flags: Uint8Array, depth: numbe
   });
 }
 
-function getFirstElementCol(prefix: string, startIdx: number, flags: Uint8Array): number | null {
-  for (let i = startIdx; i < prefix.length; i++) {
-    if (prefix[i] === "\n") return null;
-    if (flags[i] & FLAG_COMMENT) continue;
-    if (!/\s/.test(prefix[i])) return getColumn(prefix, i);
-  }
-  return null;
+function findClosing(text: string, index: number, flags: Uint8Array, depth: number = 0): number {
+  return findForward(text, index, text.length - 1, flags, (char) => {
+    if (isOpeningDelimiter(char)) {
+      depth++;
+    } else if (isClosingDelimiter(char)) {
+      if (depth === 0) return true;
+      depth--;
+    }
+    return false;
+  });
 }
 
 function getFormIndentation(prefix: string, openParenIdx: number, flags: Uint8Array): string {
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
-  let firstElemIdx = -1;
-  for (let i = openParenIdx + 1; i < prefix.length; i++) {
-    if (prefix[i] === "\n") break;
-    if (!/\s/.test(prefix[i]) && !(flags[i] & FLAG_COMMENT)) { firstElemIdx = i; break; }
-  }
-  if (firstElemIdx === -1) {
-    return " ".repeat(openCol + IndentRule.Inner);
-  }
-  let firstElemEndIdx = -1;
-  if (prefix[firstElemIdx] === '"') {
-    for (let i = firstElemIdx + 1; i < prefix.length; i++) {
-       if (prefix[i] === '"' && (i === 0 || prefix[i-1] !== "\\")) { firstElemEndIdx = i + 1; break; }
-    }
-  } else if (isOpeningDelimiter(prefix[firstElemIdx])) {
-    let depth = 0;
-    for (let i = firstElemIdx; i < prefix.length; i++) {
-      if (flags[i] & FLAG_IGNORED) continue;
-      if (isOpeningDelimiter(prefix[i])) depth++;
-      else if (isClosingDelimiter(prefix[i])) {
-        depth--;
-        if (depth === 0) { firstElemEndIdx = i + 1; break; }
-      }
-    }
+  if (openChar !== "(") return " ".repeat(openCol + 1);
+  const firstElemIdx = findForward(prefix, openParenIdx + 1, prefix.length - 1, flags, (c) => !/\s/.test(c), false);
+  if (firstElemIdx === -1) return " ".repeat(openCol + 1);
+  let firstElemEnd = firstElemIdx;
+  if (isOpeningDelimiter(prefix[firstElemIdx])) {
+    const closing = findClosing(prefix, firstElemIdx + 1, flags);
+    firstElemEnd = closing === -1 ? prefix.length : closing + 1;
   } else {
     for (let i = firstElemIdx; i < prefix.length; i++) {
-      if ((flags[i] & FLAG_COMMENT) || /\s|\(|\)|\[|\]|\{|\}/.test(prefix[i])) { firstElemEndIdx = i; break; }
-    }
-  }
-  if (firstElemEndIdx === -1) firstElemEndIdx = prefix.length;
-  const secondElemCol = getFirstElementCol(prefix, firstElemEndIdx, flags);
-  if (openChar === "(") {
-    if (!(flags[firstElemIdx] & FLAG_IGNORED) && !isOpeningDelimiter(prefix[firstElemIdx]) && prefix[firstElemIdx] !== '"') {
-      const symbol = prefix.slice(firstElemIdx, firstElemEndIdx);
-      if (BODY_FORMS.has(symbol)) {
-        return " ".repeat(openCol + IndentRule.Body);
+      if (/\s|\(|\)|\[|\]|\{|\}/.test(prefix[i]) && !(prefix[i] === '"' && i > firstElemIdx)) {
+        firstElemEnd = i;
+        break;
       }
-      if (secondElemCol !== null) return " ".repeat(secondElemCol);
-      return " ".repeat(openCol + IndentRule.Body);
+      if (i === prefix.length - 1) firstElemEnd = prefix.length;
     }
-    if (secondElemCol !== null) return " ".repeat(secondElemCol);
-    return " ".repeat(openCol + IndentRule.Inner);
   }
-  if (secondElemCol !== null) return " ".repeat(secondElemCol);
-  return " ".repeat(openCol + IndentRule.Inner);
+  const symbol = prefix.slice(firstElemIdx, firstElemEnd);
+  const rule = INDENT_RULES[symbol] || { type: "align", count: 1 };
+  let argIndex = 0;
+  let targetArgCol = -1;
+  let firstArgColOnSameLine = -1;
+  let curr = firstElemIdx;
+  const openLineNum = prefix.lastIndexOf("\n", openParenIdx);
+  while (curr < prefix.length) {
+    const start = findForward(prefix, curr, prefix.length - 1, flags, (c) => !/\s/.test(c), false);
+    if (start === -1) break;
+    const startLineNum = prefix.lastIndexOf("\n", start);
+    if (argIndex === 1 && startLineNum === openLineNum) firstArgColOnSameLine = getColumn(prefix, start);
+    if (argIndex === rule.count) targetArgCol = getColumn(prefix, start);
+    if (isOpeningDelimiter(prefix[start])) {
+      const closing = findClosing(prefix, start + 1, flags);
+      curr = closing === -1 ? prefix.length : closing + 1;
+    } else if (isClosingDelimiter(prefix[start])) {
+      break;
+    } else if (prefix[start] === '"') {
+       let i = start + 1;
+       while (i < prefix.length && (prefix[i] !== '"' || prefix[i-1] === '\\')) i++;
+       curr = i + 1;
+    } else {
+      let i = start;
+      while (i < prefix.length && !/\s|\(|\)|\[|\]|\{|\}/.test(prefix[i])) i++;
+      curr = i;
+    }
+    argIndex++;
+  }
+  if (rule.type === "body") {
+    return " ".repeat(openCol + BODY_INDENT_WIDTH);
+  } else {
+    let indent = -1;
+    if (argIndex > rule.count && targetArgCol !== -1) indent = targetArgCol;
+    else if (firstArgColOnSameLine !== -1) indent = firstArgColOnSameLine;
+    else indent = openCol + BODY_INDENT_WIDTH;
+    return " ".repeat(indent);
+  }
 }
 
 function getTopLevelIndentation(prefix: string, flags: Uint8Array): string {
