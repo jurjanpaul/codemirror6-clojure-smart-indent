@@ -17,21 +17,13 @@ function formatOutput(buffer: string, cursor: number) {
 function assertSmartIndent(expected: string, input: string) {
   const { buffer, cursor } = parseInput(input);
   const prefix = buffer.slice(0, cursor);
-  const indentation = calculateIndentation(prefix);
+  const actualIndentation = calculateIndentation(prefix);
 
-  // Simulate behavior where pressing Enter on a whitespace-only line removes that whitespace
-  const lastNewline = prefix.lastIndexOf('\n');
-  const lastLine = prefix.slice(lastNewline + 1);
-  let processedPrefix = prefix;
-  if (lastNewline !== -1 && lastLine.trim() === "") {
-      processedPrefix = prefix.slice(0, lastNewline + 1);
-  }
+  const { buffer: expectedBuffer, cursor: expectedCursor } = parseInput(expected);
+  const lastNewline = expectedBuffer.lastIndexOf('\n', expectedCursor);
+  const expectedIndentation = expectedBuffer.slice(lastNewline + 1, expectedCursor);
 
-  const newNewlineAndIndent = "\n" + indentation;
-  const suffix = buffer.slice(cursor);
-  const actual = formatOutput(processedPrefix + newNewlineAndIndent + suffix,
-                              processedPrefix.length + newNewlineAndIndent.length);
-  expect(actual).to.equal(expected);
+  expect(actualIndentation).to.equal(expectedIndentation, `Indentation mismatch for input:\n${input}`);
 }
 
 describe("Clojure Smart Indent", () => {
@@ -40,7 +32,7 @@ describe("Clojure Smart Indent", () => {
                       "  (foo)|");
   });
 
-  it("should handle basic list indentation (placeholder test)", () => {
+  it("should handle body indentation", () => {
     assertSmartIndent("(defn foo [x]\n  |",
                       "(defn foo [x]|");
   });
@@ -76,25 +68,13 @@ describe("Clojure Smart Indent", () => {
   });
 
   it("should respect manual indentation from previous line", () => {
-    assertSmartIndent(
-`(foo
-    bar
-    |)`,
-`(foo
-    bar|)`
-    );
+    assertSmartIndent("(foo\n    bar\n    |)",
+                      "(foo\n    bar|)");
   });
 
   it("should dedent after closing a form", () => {
-    assertSmartIndent(
-`(foo
-  (bar
-    baz)
-  |)`,
-`(foo
-  (bar
-    baz)|)`
-    );
+    assertSmartIndent("(foo\n  (bar\n    baz)\n  |)",
+                      "(foo\n  (bar\n    baz)|)");
   });
 
   it("should not indent when pressing Enter inside a string", () => {
@@ -103,39 +83,23 @@ describe("Clojure Smart Indent", () => {
   });
 
   it("should not indent when pressing Enter inside a multi-line string", () => {
-    assertSmartIndent(`(println "Hello\n  there\n|")`, `(println "Hello\n  there|")`);
+    assertSmartIndent("(println \"Hello\n  there\n|\")",
+                      "(println \"Hello\n  there|\")");
   });
 
   it("should dedent correctly after multiple closing parentheses", () => {
-    assertSmartIndent(
-`(defn foo [x]
-  (let [y 1]
-    (println y)))
-|`,
-`(defn foo [x]
-  (let [y 1]
-    (println y)))|`
-    );
+    assertSmartIndent("(defn foo [x]\n  (let [y 1]\n    (println y)))\n|",
+                      "(defn foo [x]\n  (let [y 1]\n    (println y)))|");
   });
 
   it("should dedent correctly when closing paren is followed by comment", () => {
-    assertSmartIndent(
-`(let [x 1]
-  x) ; comment
-|`,
-`(let [x 1]
-  x) ; comment|`
-    );
+    assertSmartIndent("(let [x 1]\n  x) ; comment\n|",
+                      "(let [x 1]\n  x) ; comment|");
   });
 
   it("should apply proper indentation based on previous lines after a blank line", () => {
-    assertSmartIndent(
-`(let [x 1]
-
-  |`,
-`(let [x 1]
-    |`
-    );
+    assertSmartIndent("(let [x 1]\n\n  |",
+                      "(let [x 1]\n    |");
   });
   it("should apply proper indentation based on previous lines after a line with only whitespace before the cursor", () => {
     assertSmartIndent('(let [x 1]\n\n  |xyz',
