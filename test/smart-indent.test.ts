@@ -139,4 +139,9 @@ describe("Clojure Smart Indent", () => {
     assertSmartIndent("(foo ; comment\n  |)",
                       "(foo ; comment|)");
   });
+
+  it("should respect manual indentation even across blank lines within a form", () => {
+    assertSmartIndent("(defn foo [x]\n    (manual-indent)\n\n    |)",
+                      "(defn foo [x]\n    (manual-indent)\n\n|)");
+  });
 });
