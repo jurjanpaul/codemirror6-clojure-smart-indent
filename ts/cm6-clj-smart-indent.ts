@@ -144,26 +144,26 @@ function readElement(text: string, index: number, flags: Flags): string {
   }
 }
 
-function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags): string {
+function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags): number {
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
-  if (openChar !== "(") return " ".repeat(openCol + 1);
+  if (openChar !== "(") return openCol + 1;
   const firstElemIdx = findForward(prefix, openParenIdx + 1, prefix.length - 1, flags, complement(isWhitespace), false);
-  if (firstElemIdx === -1) return " ".repeat(openCol + 1);
+  if (firstElemIdx === -1) return openCol + 1;
   const symbol = readElement(prefix, firstElemIdx, flags);
   const firstElemEnd = firstElemIdx + symbol.length;
   if (BODY_FORMS.has(symbol)) {
-    return " ".repeat(openCol + 2);
+    return openCol + 2;
   }
   const lineStartIdx = prefix.lastIndexOf("\n", openParenIdx);
   const firstArgIdx = findForward(prefix, firstElemEnd, prefix.length - 1, flags, (c, i) => !isWhitespace(c) && !hasFlag(flags, i, FLAG_COMMENT), false);
   if (firstArgIdx !== -1) {
     const firstArgLineStartIdx = prefix.lastIndexOf("\n", firstArgIdx);
     if (firstArgLineStartIdx === lineStartIdx) {
-      return " ".repeat(getColumn(prefix, firstArgIdx));
+      return getColumn(prefix, firstArgIdx);
     }
   }
-  return " ".repeat(openCol + 1);
+  return openCol + 1;
 }
 
 function findUnmatchedCloseDelimiter(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
@@ -202,7 +202,7 @@ export function calculateIndentation(prefix: string): string {
   const lastSignificantLineStart = prefix.lastIndexOf("\n", lastSignificantCharIdx);
   const openParenIdx = findOpenDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
   if (openParenIdx !== -1) {
-    return getFormIndentation(prefix, openParenIdx, flags);
+    return " ".repeat(getFormIndentation(prefix, openParenIdx, flags));
   }
   const closingParenIdx = findUnmatchedCloseDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
   if (closingParenIdx !== -1) {
