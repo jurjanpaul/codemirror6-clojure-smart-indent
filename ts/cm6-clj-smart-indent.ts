@@ -54,8 +54,6 @@ const BODY_FORMS = new Set([
   "with-precision", "with-redefs", "with-redefs-fn"
 ]);
 
-const BODY_INDENT_WIDTH = 2;
-
 const complement =
   <T>(predicate: (value: T) => boolean) =>
   (value: T) =>
@@ -134,29 +132,34 @@ function findCloseDelimiter(text: string, index: number, flags: Flags, depth: nu
   });
 }
 
+function readElement(text: string, index: number, flags: Flags): string {
+  if (isOpenDelimiter(text[index])) {
+    const closing = findCloseDelimiter(text, index + 1, flags);
+    const end = closing === -1 ? text.length : closing + 1;
+    return text.slice(index, end);
+  } else {
+    const end = findForward(text, index, text.length - 1, flags, (c) => isWhitespace(c) || isOpenDelimiter(c) || isCloseDelimiter(c));
+    const realEnd = end === -1 ? text.length : end;
+    return text.slice(index, realEnd);
+  }
+}
+
 function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags): string {
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
   if (openChar !== "(") return " ".repeat(openCol + 1);
   const firstElemIdx = findForward(prefix, openParenIdx + 1, prefix.length - 1, flags, complement(isWhitespace), false);
   if (firstElemIdx === -1) return " ".repeat(openCol + 1);
-  let firstElemEnd = firstElemIdx;
-  if (isOpenDelimiter(prefix[firstElemIdx])) {
-    const closing = findCloseDelimiter(prefix, firstElemIdx + 1, flags);
-    firstElemEnd = closing === -1 ? prefix.length : closing + 1;
-  } else {
-    const end = findForward(prefix, firstElemIdx, prefix.length - 1, flags, (c) => isWhitespace(c) || isOpenDelimiter(c) || isCloseDelimiter(c));
-    firstElemEnd = end === -1 ? prefix.length : end;
-  }
-  const symbol = prefix.slice(firstElemIdx, firstElemEnd);
+  const symbol = readElement(prefix, firstElemIdx, flags);
+  const firstElemEnd = firstElemIdx + symbol.length;
   if (BODY_FORMS.has(symbol)) {
-    return " ".repeat(openCol + BODY_INDENT_WIDTH);
+    return " ".repeat(openCol + 2);
   }
-  const openLineNum = prefix.lastIndexOf("\n", openParenIdx);
+  const lineStartIdx = prefix.lastIndexOf("\n", openParenIdx);
   const firstArgIdx = findForward(prefix, firstElemEnd, prefix.length - 1, flags, (c, i) => !isWhitespace(c) && !hasFlag(flags, i, FLAG_COMMENT), false);
   if (firstArgIdx !== -1) {
-    const firstArgLineNum = prefix.lastIndexOf("\n", firstArgIdx);
-    if (firstArgLineNum === openLineNum) {
+    const firstArgLineStartIdx = prefix.lastIndexOf("\n", firstArgIdx);
+    if (firstArgLineStartIdx === lineStartIdx) {
       return " ".repeat(getColumn(prefix, firstArgIdx));
     }
   }
