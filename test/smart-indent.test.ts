@@ -155,4 +155,31 @@ describe("Clojure Smart Indent", () => {
                         "(defn foo [x]\n    (manual-indent)\n\n|");
     });
   });
+
+  describe("Forms with Prefixes", () => {
+    it("should dedent to the start of the set literal (not the brace)", () => {
+      assertSmartIndent("#{1\n  2}\n|",
+                        "#{1\n  2}|");
+    });
+
+    it("should dedent to the start of the reader conditional (not the paren)", () => {
+      assertSmartIndent("#?(:clj 1\n   :cljs 2)\n|",
+                        "#?(:clj 1\n   :cljs 2)|");
+    });
+
+    it("should dedent to the start of the anonymous function literal (not the paren)", () => {
+      assertSmartIndent("#(\n  inc %)\n|",
+                        "#(\n  inc %)|");
+    });
+
+    it("should dedent to the start of the metadata map (not the brace)", () => {
+      assertSmartIndent("^{\n  :a 1}\n|",
+                        "^{\n  :a 1}|");
+    });
+
+    it("should dedent correctly after an ignored form", () => {
+      assertSmartIndent("#_ (\n  ignore me)\n|",
+                        "#_ (\n  ignore me)|");
+    });
+  });
 });

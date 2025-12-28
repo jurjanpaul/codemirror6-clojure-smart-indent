@@ -138,6 +138,35 @@ function readElement(text: string, index: number, flags: Flags): string {
   }
 }
 
+function getFormStart(text: string, openIdx: number, flags: Flags): number {
+  if (openIdx > 0 && text[openIdx - 1] === '#') {
+    return openIdx - 1;
+  }
+  let curr = openIdx - 1;
+  while (curr >= 0) {
+    if (isWhitespace(text[curr]) || hasFlag(flags, curr, FLAG_COMMENT)) {
+      curr--;
+      continue;
+    }
+    const char = text[curr];
+    if (char === '^' || char === '\'' || char === '@' || char === '`' || char === '~') {
+      return getFormStart(text, curr, flags);
+    }
+    if (char === '_') {
+      if (curr > 0 && text[curr - 1] === '#') {
+        return getFormStart(text, curr - 1, flags);
+      }
+    }
+    if (char === '?') {
+      if (curr > 0 && text[curr - 1] === '#') {
+        return getFormStart(text, curr - 1, flags);
+      }
+    }
+    break;
+  }
+  return openIdx;
+}
+
 function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags): number {
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
@@ -202,8 +231,9 @@ export function calculateIndentation(prefix: string): string {
   if (closeDelimiterIdx !== -1) {
     const matchingOpenIdx = findOpenDelimiter(prefix, closeDelimiterIdx - 1, flags);
     if (matchingOpenIdx !== -1) {
-      const matchingOpenLineStart = prefix.lastIndexOf("\n", matchingOpenIdx);
-      return " ".repeat(matchingOpenIdx - matchingOpenLineStart - 1);
+      const formStartIdx = getFormStart(prefix, matchingOpenIdx, flags);
+      const matchingOpenLineStart = prefix.lastIndexOf("\n", formStartIdx);
+      return " ".repeat(formStartIdx - matchingOpenLineStart - 1);
     }
   }
   const lastSignificantLine = prefix.slice(lastSignificantLineStart + 1, lastSignificantCharIdx + 1);
