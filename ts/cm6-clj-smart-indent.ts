@@ -97,15 +97,14 @@ function isCloseDelimiter(char: string): boolean {
   return char === ')' || char === ']' || char === '}';
 }
 
-function findBackward(text: string, index: number, minIndex: number, flags: Flags, pred: (char: string, index: number) => boolean | void, skipIgnored: boolean = true): number {
-  for (let i = index; i >= minIndex; i--) {
-    if (skipIgnored && isIgnored(flags, i)) continue;
-    if (pred(text[i], i)) return i;
-  }
-  return -1;
+function isDelimiter(char: string): boolean {
+  return isOpenDelimiter(char) || isCloseDelimiter(char);
 }
-function findForward(text: string, index: number, maxIndex: number, flags: Flags, pred: (char: string, index: number) => boolean | void, skipIgnored: boolean = true): number {
-  for (let i = index; i <= maxIndex; i++) {
+
+function find(text: string, index: number, limit: number, flags: Flags, pred: (char: string, index: number) => boolean | void, skipIgnored: boolean = true): number {
+  const scanForward = index < limit;
+  const step = scanForward ? 1 : -1;
+  for (let i = index; scanForward ? i <= limit : i >= limit; i += step) {
     if (skipIgnored && isIgnored(flags, i)) continue;
     if (pred(text[i], i)) return i;
   }
@@ -113,15 +112,14 @@ function findForward(text: string, index: number, maxIndex: number, flags: Flags
 }
 
 function findLastSignificantCharIdx(text: string, index: number, flags: Flags, minIndex: number = 0): number {
-  return findBackward(text, index, minIndex, flags, notWhitespace);
+  return find(text, index, minIndex, flags, notWhitespace);
 }
 
 function findMatching(text: string, index: number, limit: number, flags: Flags, depth: number = 0): number {
-  const scanForward = (index < limit);
+  const scanForward = index < limit;
   const openPred = scanForward ? isOpenDelimiter : isCloseDelimiter;
   const closePred = scanForward ? isCloseDelimiter : isOpenDelimiter;
-  const findFunc = scanForward ? findForward : findBackward;
-  return findFunc(text, index, limit, flags, (char) => {
+  return find(text, index, limit, flags, (char) => {
     if (openPred(char)) {
       depth++;
     } else if (closePred(char)) {
@@ -138,10 +136,6 @@ function findOpenDelimiter(text: string, index: number, minIndex: number = 0, fl
 
 function findCloseDelimiter(text: string, index: number, flags: Flags, depth: number = 0): number {
   return findMatching(text, index, text.length - 1, flags, depth);
-}
-
-function isDelimiter(char: string): boolean {
-  return isOpenDelimiter(char) || isCloseDelimiter(char);
 }
 
 function readElement(text: string, index: number, flags: Flags): string {
@@ -170,7 +164,7 @@ function readElement(text: string, index: number, flags: Flags): string {
     const end = closing === -1 ? text.length : closing + 1;
     return text.slice(index, end);
   }
-  const end = findForward(text, curr, text.length - 1, flags, (c) => isWhitespace(c) || isDelimiter(c));
+  const end = find(text, curr, text.length - 1, flags, (c) => isWhitespace(c) || isDelimiter(c));
   const realEnd = end === -1 ? text.length : end;
   return text.slice(index, realEnd);
 }
@@ -212,7 +206,7 @@ function getFormIndentation(text: string, openParenIdx: number, flags: Flags): n
 function findOutermostCloseDelimiter(text: string, index: number, minIndex: number = 0, flags: Flags): number {
   let candidate = -1;
   let depth = 0;
-  findBackward(text, index, minIndex, flags, (char, i) => {
+  find(text, index, minIndex, flags, (char, i) => {
     if (isCloseDelimiter(char)) {
       depth++;
       if (depth === 1) {
