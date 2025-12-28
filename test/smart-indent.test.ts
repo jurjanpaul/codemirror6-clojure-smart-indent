@@ -115,14 +115,9 @@ describe("Clojure Smart Indent", () => {
                       "(->> data|)");
   });
 
-  it("should indent ->> body by 2 spaces if there is no first argument yet", () => {
-    assertSmartIndent("(->>\n  |)",
+  it("should indent ->> body by 1 space if there is no first argument yet", () => {
+    assertSmartIndent("(->>\n |)",
                       "(->>|)");
-  });
-
-  it("should indent ->> body by 2 spaces if first argument is on next line", () => {
-    assertSmartIndent("(->>\n  data\n  |)",
-                      "(->>\n  data|)");
   });
 
   it("should align subsequent forms with the first argument even if it was on a new line", () => {
@@ -141,12 +136,17 @@ describe("Clojure Smart Indent", () => {
   });
 
   it("should ignore comments when looking for the first argument to align with", () => {
-    assertSmartIndent("(foo ; comment\n  |)",
+    assertSmartIndent("(foo ; comment\n |)",
                       "(foo ; comment|)");
   });
 
   it("should respect manual indentation even across blank lines within a form", () => {
     assertSmartIndent("(defn foo [x]\n    (manual-indent)\n\n    |)",
                       "(defn foo [x]\n    (manual-indent)\n\n|)");
+  });
+
+  it("should align with opening paren of the form that just closed", () => {
+    assertSmartIndent("  (foo\n    bar)\n  |",
+                      "  (foo\n    bar)|");
   });
 });

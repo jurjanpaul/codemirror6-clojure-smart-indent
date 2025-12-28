@@ -112,8 +112,8 @@ function findLastSignificantCharIdx(text: string, index: number, flags: Flags, m
   return findBackward(text, index, minIndex, flags, complement(isWhitespace));
 }
 
-function findOpener(text: string, index: number, flags: Flags, depth: number = 0): number {
-  return findBackward(text, index, 0, flags, (char) => {
+function findOpener(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
+  return findBackward(text, index, minIndex, flags, (char) => {
     // Note: this does not currently bother about delimiters having to match!
     if (isClosingDelimiter(char)) {
       depth++;
@@ -164,16 +164,28 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags):
       return " ".repeat(getColumn(prefix, firstArgIdx));
     }
   }
-  return " ".repeat(openCol + BODY_INDENT_WIDTH);
+  return " ".repeat(openCol + 1);
 }
 
-function getDedentation(prefix: string, flags: Flags, lastSignificantCharIdx: number): string | undefined {
-  if (isClosingDelimiter(prefix[lastSignificantCharIdx])) {
-    const matchingOpen = findOpener(prefix, lastSignificantCharIdx, flags, -1);
-    if (matchingOpen !== -1) {
-      return getIndentationAt(prefix, matchingOpen);
+function findLastUnopenedClosing(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
+  let candidate = -1;
+  findBackward(text, index, minIndex, flags, (char, i) => {
+    if (isClosingDelimiter(char)) {
+      depth++;
+      if (depth === 1) {
+        candidate = i;
+      }
+    } else if (isOpeningDelimiter(char)) {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0) {
+          candidate = -1;
+        }
+      }
     }
-  }
+    return false;
+  });
+  return candidate;
 }
 
 export function calculateIndentation(prefix: string): string {
@@ -184,38 +196,32 @@ export function calculateIndentation(prefix: string): string {
   if (hasFlag(flags, flags.length - 1, FLAG_STRING)) {
     return "";
   }
-  const lastSignificantCharIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags);
+  let lastSignificantCharIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags);
   if (lastSignificantCharIdx === -1) {
     return "";
   }
   const lastSignificantLineStart = prefix.lastIndexOf("\n", lastSignificantCharIdx);
-  const lastNewlineIdx = prefix.lastIndexOf("\n");
-  const currentLine = prefix.slice(lastNewlineIdx + 1);
-  const isCurrentLineBlank = currentLine.trim().length === 0;
-  const openParenIdx = findOpener(prefix, lastSignificantCharIdx, flags);
-  if (openParenIdx === -1) {
-    const dedentIndent = getDedentation(prefix, flags, lastSignificantCharIdx);
-    if (dedentIndent !== undefined) return dedentIndent;
-    if (isCurrentLineBlank) {
-      return getIndentationAt(prefix, lastSignificantCharIdx);
-    }
-    return getIndentation(currentLine);
+// Distinguish 3 situations considering last significant line:
+// - unclosed opener
+//   => form indent for last unclosed opener
+  const openParenIdx = findOpener(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
+  if (openParenIdx !== -1) {
+    return getFormIndentation(prefix, openParenIdx, flags);
   }
-  if (openParenIdx < lastNewlineIdx) {
-    if (lastSignificantCharIdx > lastNewlineIdx) {
-      if (!isClosingDelimiter(prefix[lastSignificantCharIdx])) {
-        return getIndentation(currentLine);
-      }
-    } else if (isCurrentLineBlank && lastSignificantCharIdx > openParenIdx) {
-      const openerLineStart = prefix.lastIndexOf("\n", openParenIdx);
-      if (lastSignificantLineStart > openerLineStart) {
-        const dedentIndent = getDedentation(prefix, flags, lastSignificantCharIdx);
-        if (dedentIndent !== undefined) return dedentIndent;
-        return getIndentationAt(prefix, lastSignificantCharIdx);
-      }
+// - unopened closer
+//   => find matching opener on any preceding line and use its column for indent
+  const closingParenIdx = findLastUnopenedClosing(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
+  if (closingParenIdx !== -1) {
+    const matchingOpenIdx = findOpener(prefix, closingParenIdx, flags, -1);
+    if (matchingOpenIdx !== -1) {
+      const matchingOpenLineStart = prefix.lastIndexOf("\n", matchingOpenIdx);
+      return " ".repeat(matchingOpenIdx - matchingOpenLineStart - 1);
     }
   }
-  return getFormIndentation(prefix, openParenIdx, flags);
+// - otherwise
+// => preserve previous line’s indent
+  const lastSignificantLine = prefix.slice(lastSignificantLineStart + 1, lastSignificantCharIdx + 1);
+  return getIndentation(lastSignificantLine);
 }
 
 function smartIndent(context: IndentContext, pos: number): number | null {
