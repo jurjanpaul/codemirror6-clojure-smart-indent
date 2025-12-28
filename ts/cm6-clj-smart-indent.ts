@@ -77,19 +77,15 @@ function getIndentation(line: string): string {
   return match ? match[0] : "";
 }
 
-function getIndentationAt(text: string, index: number): string {
-  return getIndentation(getLineAt(text, index));
-}
-
 function isWhitespace(c: string): boolean {
   return c === " " || c === "," || c === "\n" || c === "\r" || c === "\t";
 }
 
-function isOpeningDelimiter(char: string): boolean {
+function isOpenDelimiter(char: string): boolean {
   return char === '(' || char === '[' || char === '{';
 }
 
-function isClosingDelimiter(char: string): boolean {
+function isCloseDelimiter(char: string): boolean {
   return char === ')' || char === ']' || char === '}';
 }
 
@@ -112,12 +108,12 @@ function findLastSignificantCharIdx(text: string, index: number, flags: Flags, m
   return findBackward(text, index, minIndex, flags, complement(isWhitespace));
 }
 
-function findOpener(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
+function findOpenDelimiter(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
   return findBackward(text, index, minIndex, flags, (char) => {
     // Note: this does not currently bother about delimiters having to match!
-    if (isClosingDelimiter(char)) {
+    if (isCloseDelimiter(char)) {
       depth++;
-    } else if (isOpeningDelimiter(char)) {
+    } else if (isOpenDelimiter(char)) {
       if (depth === 0) return true;
       depth--;
     }
@@ -125,12 +121,12 @@ function findOpener(text: string, index: number, flags: Flags, depth: number = 0
   });
 }
 
-function findClosing(text: string, index: number, flags: Flags, depth: number = 0): number {
+function findCloseDelimiter(text: string, index: number, flags: Flags, depth: number = 0): number {
   return findForward(text, index, text.length - 1, flags, (char) => {
     // Note: this does not currently bother about delimiters having to match!
-    if (isOpeningDelimiter(char)) {
+    if (isOpenDelimiter(char)) {
       depth++;
-    } else if (isClosingDelimiter(char)) {
+    } else if (isCloseDelimiter(char)) {
       if (depth === 0) return true;
       depth--;
     }
@@ -145,11 +141,11 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags):
   const firstElemIdx = findForward(prefix, openParenIdx + 1, prefix.length - 1, flags, complement(isWhitespace), false);
   if (firstElemIdx === -1) return " ".repeat(openCol + 1);
   let firstElemEnd = firstElemIdx;
-  if (isOpeningDelimiter(prefix[firstElemIdx])) {
-    const closing = findClosing(prefix, firstElemIdx + 1, flags);
+  if (isOpenDelimiter(prefix[firstElemIdx])) {
+    const closing = findCloseDelimiter(prefix, firstElemIdx + 1, flags);
     firstElemEnd = closing === -1 ? prefix.length : closing + 1;
   } else {
-    const end = findForward(prefix, firstElemIdx, prefix.length - 1, flags, (c) => isWhitespace(c) || isOpeningDelimiter(c) || isClosingDelimiter(c));
+    const end = findForward(prefix, firstElemIdx, prefix.length - 1, flags, (c) => isWhitespace(c) || isOpenDelimiter(c) || isCloseDelimiter(c));
     firstElemEnd = end === -1 ? prefix.length : end;
   }
   const symbol = prefix.slice(firstElemIdx, firstElemEnd);
@@ -167,15 +163,15 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags):
   return " ".repeat(openCol + 1);
 }
 
-function findLastUnopenedClosing(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
+function findUnmatchedCloseDelimiter(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
   let candidate = -1;
   findBackward(text, index, minIndex, flags, (char, i) => {
-    if (isClosingDelimiter(char)) {
+    if (isCloseDelimiter(char)) {
       depth++;
       if (depth === 1) {
         candidate = i;
       }
-    } else if (isOpeningDelimiter(char)) {
+    } else if (isOpenDelimiter(char)) {
       if (depth > 0) {
         depth--;
         if (depth === 0) {
@@ -201,25 +197,18 @@ export function calculateIndentation(prefix: string): string {
     return "";
   }
   const lastSignificantLineStart = prefix.lastIndexOf("\n", lastSignificantCharIdx);
-// Distinguish 3 situations considering last significant line:
-// - unclosed opener
-//   => form indent for last unclosed opener
-  const openParenIdx = findOpener(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
+  const openParenIdx = findOpenDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
   if (openParenIdx !== -1) {
     return getFormIndentation(prefix, openParenIdx, flags);
   }
-// - unopened closer
-//   => find matching opener on any preceding line and use its column for indent
-  const closingParenIdx = findLastUnopenedClosing(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
+  const closingParenIdx = findUnmatchedCloseDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
   if (closingParenIdx !== -1) {
-    const matchingOpenIdx = findOpener(prefix, closingParenIdx, flags, -1);
+    const matchingOpenIdx = findOpenDelimiter(prefix, closingParenIdx, flags, -1);
     if (matchingOpenIdx !== -1) {
       const matchingOpenLineStart = prefix.lastIndexOf("\n", matchingOpenIdx);
       return " ".repeat(matchingOpenIdx - matchingOpenLineStart - 1);
     }
   }
-// - otherwise
-// => preserve previous line’s indent
   const lastSignificantLine = prefix.slice(lastSignificantLineStart + 1, lastSignificantCharIdx + 1);
   return getIndentation(lastSignificantLine);
 }
