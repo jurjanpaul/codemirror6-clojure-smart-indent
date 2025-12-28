@@ -67,11 +67,6 @@ const BODY_FORMS = new Set([
   "with-precision", "with-redefs", "with-redefs-fn"
 ]);
 
-const complement =
-  <T>(predicate: (value: T) => boolean) =>
-  (value: T) =>
-    !predicate(value);
-
 function getLineStart(text: string, index: number): number {
   const lastNewline = text.lastIndexOf("\n", index);
   return lastNewline === -1 ? 0 : lastNewline + 1;
@@ -88,6 +83,10 @@ function getIndentationLength(line: string): number {
 
 function isWhitespace(c: string): boolean {
   return c === " " || c === "," || c === "\n" || c === "\r" || c === "\t";
+}
+
+function notWhitespace(c: string): boolean {
+  return !isWhitespace(c);
 }
 
 function isOpenDelimiter(char: string): boolean {
@@ -114,7 +113,7 @@ function findForward(text: string, index: number, maxIndex: number, flags: Flags
 }
 
 function findLastSignificantCharIdx(text: string, index: number, flags: Flags, minIndex: number = 0): number {
-  return findBackward(text, index, minIndex, flags, complement(isWhitespace));
+  return findBackward(text, index, minIndex, flags, notWhitespace);
 }
 
 function findOpenDelimiter(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
@@ -143,16 +142,19 @@ function findCloseDelimiter(text: string, index: number, flags: Flags, depth: nu
   });
 }
 
+function isDelimiter(char: string): boolean {
+  return isOpenDelimiter(char) || isCloseDelimiter(char);
+}
+
 function readElement(text: string, index: number, flags: Flags): string {
   if (isOpenDelimiter(text[index])) {
     const closing = findCloseDelimiter(text, index + 1, flags);
     const end = closing === -1 ? text.length : closing + 1;
     return text.slice(index, end);
-  } else {
-    const end = findForward(text, index, text.length - 1, flags, (c) => isWhitespace(c) || isOpenDelimiter(c) || isCloseDelimiter(c));
-    const realEnd = end === -1 ? text.length : end;
-    return text.slice(index, realEnd);
   }
+  const end = findForward(text, index, text.length - 1, flags, (c) => isWhitespace(c) || isDelimiter(c));
+  const realEnd = end === -1 ? text.length : end;
+  return text.slice(index, realEnd);
 }
 
 function skipSpaceAndComments(text: string, index: number, flags: Flags): number {
@@ -167,23 +169,23 @@ function skipSpaceAndComments(text: string, index: number, flags: Flags): number
   return -1;
 }
 
-function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags): number {
-  const openChar = prefix[openParenIdx];
-  const openCol = getColumn(prefix, openParenIdx);
+function getFormIndentation(text: string, openParenIdx: number, flags: Flags): number {
+  const openChar = text[openParenIdx];
+  const openCol = getColumn(text, openParenIdx);
   if (openChar !== "(") return openCol + 1;
-  const firstElemIdx = skipSpaceAndComments(prefix, openParenIdx + 1, flags);
+  const firstElemIdx = skipSpaceAndComments(text, openParenIdx + 1, flags);
   if (firstElemIdx === -1) return openCol + 1;
-  const element = readElement(prefix, firstElemIdx, flags);
+  const element = readElement(text, firstElemIdx, flags);
   const firstElemEnd = firstElemIdx + element.length;
   if (BODY_FORMS.has(element)) {
     return openCol + 2;
   }
-  const firstArgIdx = skipSpaceAndComments(prefix, firstElemEnd, flags);
+  const firstArgIdx = skipSpaceAndComments(text, firstElemEnd, flags);
   if (firstArgIdx !== -1) {
-    const firstArgLineStart = getLineStart(prefix, firstArgIdx);
-    const lineStart = getLineStart(prefix, openParenIdx);
+    const firstArgLineStart = getLineStart(text, firstArgIdx);
+    const lineStart = getLineStart(text, openParenIdx);
     if (firstArgLineStart === lineStart) {
-      return getColumn(prefix, firstArgIdx);
+      return getColumn(text, firstArgIdx);
     }
   }
   return openCol + 1;
@@ -261,8 +263,8 @@ export function calculateIndentation(prefix: string): number {
     const matchingOpenIdx = findOpenDelimiter(prefix, closeDelimiterIdx - 1, flags);
     if (matchingOpenIdx !== -1) {
       const formStartIdx = getFormStart(prefix, matchingOpenIdx, flags);
-      const matchingOpenLineStart = getLineStart(prefix, formStartIdx);
-      return formStartIdx - matchingOpenLineStart;
+      const formStartLineStart = getLineStart(prefix, formStartIdx);
+      return formStartIdx - formStartLineStart;
     }
   }
   const lastSignificantLine = prefix.slice(lastSignificantLineStart, lastSignificantCharIdx + 1);
