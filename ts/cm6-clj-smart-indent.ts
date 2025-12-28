@@ -3,7 +3,7 @@ import type { Extension, Facet } from "@codemirror/state"
 
 type Flags = Uint8Array;
 
-const FLAG_IGNORED = 1;
+const FLAG_ESCAPE = 1;
 const FLAG_COMMENT = 2;
 const FLAG_STRING = 4;
 
@@ -16,23 +16,24 @@ function parse(text: string): Flags {
   for (let i = 0; i < size; i++) {
     const char = text[i];
     if (inComment) {
-      flags[i] = FLAG_IGNORED | FLAG_COMMENT;
+      flags[i] = FLAG_COMMENT;
       if (char === '\n') inComment = false;
     } else if (escaped) {
-      flags[i] = FLAG_IGNORED;
+      flags[i] = FLAG_ESCAPE;
       escaped = false;
     } else if (char === '\\') {
-      if (inString) flags[i] = FLAG_IGNORED;
       escaped = true;
     } else if (inString) {
-      flags[i] = FLAG_IGNORED;
-      if (char === '"') inString = false;
+      if (char === '"') {
+        inString = false;
+        flags[i] = FLAG_ESCAPE;
+      }
     } else if (char === '"') {
       inString = true;
-      flags[i] = FLAG_IGNORED;
+      flags[i] = FLAG_STRING | FLAG_ESCAPE;
     } else if (char === ';') {
       inComment = true;
-      flags[i] = FLAG_IGNORED | FLAG_COMMENT;
+      flags[i] = FLAG_COMMENT;
     }
     if (inString) flags[i] |= FLAG_STRING;
   }
@@ -41,6 +42,18 @@ function parse(text: string): Flags {
 
 function hasFlag(flags: Flags, index: number, flag: number): boolean {
   return (flags[index] & flag) !== 0;
+}
+
+function isIgnored(flags: Flags, index: number): boolean {
+  return hasFlag(flags, index, FLAG_STRING | FLAG_COMMENT | FLAG_ESCAPE);
+}
+
+function inString(flags: Flags, index: number): boolean {
+  return hasFlag(flags, index, FLAG_STRING);
+}
+
+function inComment(flags: Flags, index: number): boolean {
+  return hasFlag(flags, index, FLAG_COMMENT);
 }
 
 const BODY_FORMS = new Set([
@@ -83,14 +96,14 @@ function isCloseDelimiter(char: string): boolean {
 
 function findBackward(text: string, index: number, minIndex: number, flags: Flags, pred: (char: string, index: number) => boolean | void, skipIgnored: boolean = true): number {
   for (let i = index; i >= minIndex; i--) {
-    if (skipIgnored && hasFlag(flags, i, FLAG_IGNORED)) continue;
+    if (skipIgnored && isIgnored(flags, i)) continue;
     if (pred(text[i], i)) return i;
   }
   return -1;
 }
 function findForward(text: string, index: number, maxIndex: number, flags: Flags, pred: (char: string, index: number) => boolean | void, skipIgnored: boolean = true): number {
   for (let i = index; i <= maxIndex; i++) {
-    if (skipIgnored && hasFlag(flags, i, FLAG_IGNORED)) continue;
+    if (skipIgnored && isIgnored(flags, i)) continue;
     if (pred(text[i], i)) return i;
   }
   return -1;
@@ -138,35 +151,6 @@ function readElement(text: string, index: number, flags: Flags): string {
   }
 }
 
-function getFormStart(text: string, openIdx: number, flags: Flags): number {
-  if (openIdx > 0 && text[openIdx - 1] === '#') {
-    return openIdx - 1;
-  }
-  let curr = openIdx - 1;
-  while (curr >= 0) {
-    if (isWhitespace(text[curr]) || hasFlag(flags, curr, FLAG_COMMENT)) {
-      curr--;
-      continue;
-    }
-    const char = text[curr];
-    if (char === '^' || char === '\'' || char === '@' || char === '`' || char === '~') {
-      return getFormStart(text, curr, flags);
-    }
-    if (char === '_') {
-      if (curr > 0 && text[curr - 1] === '#') {
-        return getFormStart(text, curr - 1, flags);
-      }
-    }
-    if (char === '?') {
-      if (curr > 0 && text[curr - 1] === '#') {
-        return getFormStart(text, curr - 1, flags);
-      }
-    }
-    break;
-  }
-  return openIdx;
-}
-
 function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags): number {
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
@@ -179,7 +163,7 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags):
     return openCol + 2;
   }
   const lineStartIdx = prefix.lastIndexOf("\n", openParenIdx);
-  const firstArgIdx = findForward(prefix, firstElemEnd, prefix.length - 1, flags, (c, i) => !isWhitespace(c) && !hasFlag(flags, i, FLAG_COMMENT), false);
+  const firstArgIdx = findForward(prefix, firstElemEnd, prefix.length - 1, flags, (c, i) => !isWhitespace(c) && !inComment(flags, i), false);
   if (firstArgIdx !== -1) {
     const firstArgLineStartIdx = prefix.lastIndexOf("\n", firstArgIdx);
     if (firstArgLineStartIdx === lineStartIdx) {
@@ -210,12 +194,41 @@ function findUnmatchedCloseDelimiter(text: string, index: number, flags: Flags, 
   return candidate;
 }
 
+function getFormStart(text: string, openIdx: number, flags: Flags): number {
+  if (openIdx > 0 && text[openIdx - 1] === '#') {
+    return openIdx - 1;
+  }
+  let curr = openIdx - 1;
+  while (curr >= 0) {
+    if (isWhitespace(text[curr]) || inComment(flags, curr)) {
+      curr--;
+      continue;
+    }
+    const char = text[curr];
+    if (char === '^' || char === '\'' || char === '@' || char === '`' || char === '~') {
+      return getFormStart(text, curr, flags);
+    }
+    if (char === '_') {
+      if (curr > 0 && text[curr - 1] === '#') {
+        return getFormStart(text, curr - 1, flags);
+      }
+    }
+    if (char === '?') {
+      if (curr > 0 && text[curr - 1] === '#') {
+        return getFormStart(text, curr - 1, flags);
+      }
+    }
+    break;
+  }
+  return openIdx;
+}
+
 export function calculateIndentation(prefix: string): string {
   if (prefix == "") {
     return "";
   }
   const flags = parse(prefix);
-  if (hasFlag(flags, flags.length - 1, FLAG_STRING)) {
+  if (inString(flags, flags.length - 1)) {
     return "";
   }
   let lastSignificantCharIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags);
