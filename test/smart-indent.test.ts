@@ -182,4 +182,26 @@ describe("Clojure Smart Indent", () => {
                         "#_ (\n  ignore me)|");
     });
   });
+
+  describe("Prefixed Forms as First Elements", () => {
+    it("should align with the start of a set literal prefix (#)", () => {
+      assertSmartIndent("(#{1 2 3}\n |)",
+                        "(#{1 2 3}|)");
+    });
+
+    it("should align with the start of an anonymous function prefix (#)", () => {
+      assertSmartIndent("(#(println %)\n |)",
+                        "(#(println %)|)");
+    });
+
+    it("should align with the start of a metadata map prefix (^)", () => {
+      assertSmartIndent("(^{:tag String}\n |)",
+                        "(^{:tag String}|)");
+    });
+
+    it("should align with the start of a reader conditional prefix (#?)", () => {
+      assertSmartIndent("(#?(:clj 1 :cljs 2)\n |)",
+                        "(#?(:clj 1 :cljs 2)|)");
+    });
+  });
 });
