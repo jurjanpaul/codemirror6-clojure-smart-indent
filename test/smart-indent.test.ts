@@ -13,11 +13,11 @@ function parseInput(input: string) {
 function assertSmartIndent(expected: string, input: string) {
   const { buffer: expectedBuffer, cursor: expectedCursor } = parseInput(expected);
   const lastNewline = expectedBuffer.lastIndexOf('\n', expectedCursor);
-  const expectedIndentation = expectedBuffer.slice(lastNewline + 1, expectedCursor);
+  const expectedIndentLength = expectedBuffer.slice(lastNewline + 1, expectedCursor).length;
   const { buffer, cursor } = parseInput(input);
   const prefix = buffer.slice(0, cursor);
-  const actualIndentation = calculateIndentation(prefix);
-  expect(actualIndentation).to.equal(expectedIndentation, `Indentation mismatch for input:\n${input}`);
+  const actualIndentLength = calculateIndentation(prefix);
+  expect(actualIndentLength).to.equal(expectedIndentLength, `Indentation mismatch for input:\n${input}`);
 }
 
 describe("Clojure Smart Indent", () => {

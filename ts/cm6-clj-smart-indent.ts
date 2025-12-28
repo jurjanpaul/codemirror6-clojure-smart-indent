@@ -77,9 +77,9 @@ function getColumn(text: string, index: number): number {
   return index - (lastNewline === -1 ? 0 : lastNewline + 1);
 }
 
-function getIndentation(line: string): string {
+function getIndentationLength(line: string): number {
   const match = line.match(/^[ \t]*/);
-  return match ? match[0] : "";
+  return match ? match[0].length : 0;
 }
 
 function isWhitespace(c: string): boolean {
@@ -235,22 +235,22 @@ function getFormStart(text: string, openIdx: number, flags: Flags): number {
   return openIdx;
 }
 
-export function calculateIndentation(prefix: string): string {
+export function calculateIndentation(prefix: string): number {
   if (prefix == "") {
-    return "";
+    return 0;
   }
   const flags = parse(prefix);
   if (inString(flags, flags.length - 1)) {
-    return "";
+    return 0;
   }
   let lastSignificantCharIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags);
   if (lastSignificantCharIdx === -1) {
-    return "";
+    return 0;
   }
   const lastSignificantLineStart = prefix.lastIndexOf("\n", lastSignificantCharIdx);
   const openParenIdx = findOpenDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
   if (openParenIdx !== -1) {
-    return " ".repeat(getFormIndentation(prefix, openParenIdx, flags));
+    return getFormIndentation(prefix, openParenIdx, flags);
   }
   const closeDelimiterIdx = findUnmatchedCloseDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
   if (closeDelimiterIdx !== -1) {
@@ -258,17 +258,16 @@ export function calculateIndentation(prefix: string): string {
     if (matchingOpenIdx !== -1) {
       const formStartIdx = getFormStart(prefix, matchingOpenIdx, flags);
       const matchingOpenLineStart = prefix.lastIndexOf("\n", formStartIdx);
-      return " ".repeat(formStartIdx - matchingOpenLineStart - 1);
+      return formStartIdx - matchingOpenLineStart - 1;
     }
   }
   const lastSignificantLine = prefix.slice(lastSignificantLineStart + 1, lastSignificantCharIdx + 1);
-  return getIndentation(lastSignificantLine);
+  return getIndentationLength(lastSignificantLine);
 }
 
 function smartIndent(context: IndentContext, pos: number): number | null {
   const prefix = context.state.doc.sliceString(0, pos);
-  const indentationString = calculateIndentation(prefix);
-  return indentationString.length;
+  return calculateIndentation(prefix);
 }
 
 /**
