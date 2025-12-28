@@ -151,11 +151,23 @@ function readElement(text: string, index: number, flags: Flags): string {
   }
 }
 
+function skipSpaceAndComments(text: string, index: number, flags: Flags): number {
+  let curr = index;
+  while (curr < text.length) {
+    if (isWhitespace(text[curr]) || inComment(flags, curr)) {
+      curr++;
+      continue;
+    }
+    return curr;
+  }
+  return -1;
+}
+
 function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags): number {
   const openChar = prefix[openParenIdx];
   const openCol = getColumn(prefix, openParenIdx);
   if (openChar !== "(") return openCol + 1;
-  const firstElemIdx = findForward(prefix, openParenIdx + 1, prefix.length - 1, flags, complement(isWhitespace), false);
+  const firstElemIdx = skipSpaceAndComments(prefix, openParenIdx + 1, flags);
   if (firstElemIdx === -1) return openCol + 1;
   const symbol = readElement(prefix, firstElemIdx, flags);
   const firstElemEnd = firstElemIdx + symbol.length;
@@ -163,7 +175,7 @@ function getFormIndentation(prefix: string, openParenIdx: number, flags: Flags):
     return openCol + 2;
   }
   const lineStartIdx = prefix.lastIndexOf("\n", openParenIdx);
-  const firstArgIdx = findForward(prefix, firstElemEnd, prefix.length - 1, flags, (c, i) => !isWhitespace(c) && !inComment(flags, i), false);
+  const firstArgIdx = skipSpaceAndComments(prefix, firstElemEnd, flags);
   if (firstArgIdx !== -1) {
     const firstArgLineStartIdx = prefix.lastIndexOf("\n", firstArgIdx);
     if (firstArgLineStartIdx === lineStartIdx) {
