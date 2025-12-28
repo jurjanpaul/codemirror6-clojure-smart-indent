@@ -10,10 +10,6 @@ function parseInput(input: string) {
   };
 }
 
-function formatOutput(buffer: string, cursor: number) {
-  return buffer.slice(0, cursor) + "|" + buffer.slice(cursor);
-}
-
 function assertSmartIndent(expected: string, input: string) {
   const { buffer: expectedBuffer, cursor: expectedCursor } = parseInput(expected);
   const lastNewline = expectedBuffer.lastIndexOf('\n', expectedCursor);
@@ -25,128 +21,138 @@ function assertSmartIndent(expected: string, input: string) {
 }
 
 describe("Clojure Smart Indent", () => {
-  it("should preserve existing indentation on a simple line", () => {
-    assertSmartIndent("  (foo)\n  |",
-                      "  (foo)|");
+  describe("Basic Lists and Vectors", () => {
+    it("should align arguments with the first argument on the same line", () => {
+      assertSmartIndent("(foo bar \n     |)",
+                        "(foo bar |)");
+    });
+
+    it("should indent by 1 space if no arguments are on the same line", () => {
+      assertSmartIndent("(foo\n |)",
+                        "(foo|)");
+    });
+
+    it("should indent vector elements by 1 space", () => {
+      assertSmartIndent("[foo \n |]",
+                        "[foo |]");
+    });
+
+    it("should handle nested function calls", () => {
+      assertSmartIndent("(foo [x]\n  (bar [y \n        |]))",
+                        "(foo [x]\n  (bar [y |]))");
+    });
   });
 
-  it("should handle body indentation", () => {
-    assertSmartIndent("(defn foo [x]\n  |",
-                      "(defn foo [x]|");
+  describe("Body Forms (Special Indentation)", () => {
+    it("should indent body forms (e.g., defn) by 2 spaces", () => {
+      assertSmartIndent("(defn foo [x]\n  |",
+                        "(defn foo [x]|");
+    });
+
+    it("should indent 'let' bindings by 2 spaces if no bindings are on the first line", () => {
+      assertSmartIndent("(let \n  |",
+                        "(let |");
+    });
+
+    it("should align threading macros (->>) with the first argument if present", () => {
+      assertSmartIndent("(->> data\n     |)",
+                        "(->> data|)");
+    });
+
+    it("should indent threading macros (->>) by 1 space if no argument is present yet", () => {
+      assertSmartIndent("(->>\n |)",
+                        "(->>|)");
+    });
+
+    it("should align subsequent forms in a threading macro with the first argument", () => {
+       assertSmartIndent("(->>\n  data\n  (map inc)\n  |)",
+                         "(->>\n  data\n  (map inc)|");
+    });
   });
 
-  it("should align with first argument in a regular function call", () => {
-    assertSmartIndent("(foo bar \n     |)",
-                      "(foo bar |)");
+  describe("Context Sensitivity (Strings, Comments, Literals)", () => {
+    it("should ignore parentheses inside strings", () => {
+      assertSmartIndent("(println \"ignore )\"\n         |",
+                        "(println \"ignore )\"|");
+    });
+
+    it("should ignore parentheses inside comments", () => {
+      assertSmartIndent("(defn foo [] ; ignore )\n  |",
+                        "(defn foo [] ; ignore )|");
+    });
+
+    it("should not indent when pressing Enter inside a string", () => {
+      assertSmartIndent('(println "Hello\n|")',
+                        '(println "Hello|")');
+    });
+
+    it("should not indent when pressing Enter inside a multi-line string", () => {
+      assertSmartIndent("(println \"Hello\n  there\n|\")",
+                        "(println \"Hello\n  there|\")");
+    });
+
+    it("should handle escaped backslashes correctly", () => {
+      assertSmartIndent('(let [x "\\\"]\n  |)',
+                        '(let [x "\\\\"]\n  |)');
+    });
+
+    it("should ignore character literals containing delimiters (e.g., \\()", () => {
+      assertSmartIndent("(defn foo []\n  \\(\n  |)",
+                        "(defn foo []\n  \\(|)");
+    });
+
+    it("should ignore comments when searching for the first argument alignment", () => {
+      assertSmartIndent("(foo ; comment\n |)",
+                        "(foo ; comment|");
+    });
   });
 
-  it("should align immediately after the opening paren if no second element on first line", () => {
-    assertSmartIndent("(foo\n |)",
-                      "(foo|)");
+  describe("Dedenting and Closing Forms", () => {
+    it("should return to the indentation of the parent form after closing a child form", () => {
+      assertSmartIndent("(foo\n  (bar\n    baz)\n  |)",
+                        "(foo\n  (bar\n    baz)|");
+    });
+
+    it("should dedent correctly after multiple closing parentheses", () => {
+      assertSmartIndent("(defn foo [x]\n  (let [y 1]\n    (println y)))\n|",
+                        "(defn foo [x]\n  (let [y 1]\n    (println y)))|");
+    });
+
+    it("should dedent correctly when the closing parenthesis is followed by a comment", () => {
+      assertSmartIndent("(let [x 1]\n  x) ; comment\n|",
+                        "(let [x 1]\n  x) ; comment|");
+    });
+
+    it("should align with the opening paren of the form that just closed (manual indent style)", () => {
+      assertSmartIndent("  (foo\n    bar)\n  |",
+                        "  (foo\n    bar)|");
+    });
   });
 
-  it("should indent by 2 for body forms if no args on same line", () => {
-    assertSmartIndent("(let \n  |",
-                      "(let |");
-  });
+  describe("Blank Lines and Manual Indentation", () => {
+    it("should preserve indentation of the previous line", () => {
+      assertSmartIndent("  (foo)\n  |",
+                        "  (foo)|");
+    });
 
-  it("should indent by 1 for vectors", () => {
-    assertSmartIndent("[foo \n |]",
-                      "[foo |]");
-  });
+    it("should preserve manual indentation from the previous line", () => {
+      assertSmartIndent("(foo\n      bar\n      |)",
+                        "(foo\n      bar|)");
+    });
 
-  it("should handle nested structures", () => {
-    assertSmartIndent("(defn foo [x]\n  (let [y \n        |]))",
-                      "(defn foo [x]\n  (let [y |]))");
-  });
+    it("should use indentation of the last significant line if the current line is blank", () => {
+      assertSmartIndent("(let [x 1]\n\n  |",
+                        "(let [x 1]\n    |");
+    });
 
-  it("should ignore parens in strings", () => {
-    assertSmartIndent("(println \"ignore )\"\n         |",
-                      "(println \"ignore )\"|");
-  });
+    it("should use indentation of the last significant line if current line has only whitespace", () => {
+      assertSmartIndent('(let [x 1]\n\n  |xyz',
+                        '(let [x 1]\n    |xyz');
+    });
 
-  it("should ignore parens in comments", () => {
-    assertSmartIndent("(defn foo [] ; ignore )\n  |",
-                      "(defn foo [] ; ignore )|");
-  });
-
-  it("should preserve manual indentation from previous line", () => {
-    assertSmartIndent("(foo\n      bar\n      |)",
-                      "(foo\n      bar|)");
-  });
-
-  it("should dedent after closing a form", () => {
-    assertSmartIndent("(foo\n  (bar\n    baz)\n  |)",
-                      "(foo\n  (bar\n    baz)|)");
-  });
-
-  it("should not indent when pressing Enter inside a string", () => {
-    assertSmartIndent('(println "Hello\n|")',
-                      '(println "Hello|")');
-  });
-
-  it("should not indent when pressing Enter inside a multi-line string", () => {
-    assertSmartIndent("(println \"Hello\n  there\n|\")",
-                      "(println \"Hello\n  there|\")");
-  });
-
-  it("should dedent correctly after multiple closing parentheses", () => {
-    assertSmartIndent("(defn foo [x]\n  (let [y 1]\n    (println y)))\n|",
-                      "(defn foo [x]\n  (let [y 1]\n    (println y)))|");
-  });
-
-  it("should dedent correctly when closing paren is followed by comment", () => {
-    assertSmartIndent("(let [x 1]\n  x) ; comment\n|",
-                      "(let [x 1]\n  x) ; comment|");
-  });
-
-  it("should apply proper indentation based on previous lines after a blank line", () => {
-    assertSmartIndent("(let [x 1]\n\n  |",
-                      "(let [x 1]\n    |");
-  });
-
-  it("should apply proper indentation based on previous lines after a line with only whitespace before the cursor", () => {
-    assertSmartIndent('(let [x 1]\n\n  |xyz',
-                      '(let [x 1]\n    |xyz');
-  });
-
-  it("should align ->> forms with the first argument if present", () => {
-    assertSmartIndent("(->> data\n     |)",
-                      "(->> data|)");
-  });
-
-  it("should indent ->> body by 1 space if there is no first argument yet", () => {
-    assertSmartIndent("(->>\n |)",
-                      "(->>|)");
-  });
-
-  it("should align subsequent forms with the first argument even if it was on a new line", () => {
-     assertSmartIndent("(->>\n  data\n  (map inc)\n  |)",
-                       "(->>\n  data\n  (map inc)|)");
-  });
-
-  it("should handle escaped backslashes correctly", () => {
-    assertSmartIndent('(let [x "\\\\"]\n  |)',
-                      '(let [x "\\\\"]\n  |)');
-  });
-
-  it("should ignore character literals like \\(", () => {
-    assertSmartIndent("(defn foo []\n  \\(\n  |)",
-                      "(defn foo []\n  \\(\n  |)");
-  });
-
-  it("should ignore comments when looking for the first argument to align with", () => {
-    assertSmartIndent("(foo ; comment\n |)",
-                      "(foo ; comment|)");
-  });
-
-  it("should respect manual indentation even across blank lines within a form", () => {
-    assertSmartIndent("(defn foo [x]\n    (manual-indent)\n\n    |)",
-                      "(defn foo [x]\n    (manual-indent)\n\n|)");
-  });
-
-  it("should align with opening paren of the form that just closed", () => {
-    assertSmartIndent("  (foo\n    bar)\n  |",
-                      "  (foo\n    bar)|");
+    it("should respect manual indentation even across blank lines within a form", () => {
+      assertSmartIndent("(defn foo [x]\n    (manual-indent)\n\n    |)",
+                        "(defn foo [x]\n    (manual-indent)\n\n|");
+    });
   });
 });
