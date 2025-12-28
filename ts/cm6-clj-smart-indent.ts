@@ -138,35 +138,47 @@ function findCloseDelimiter(text: string, index: number, flags: Flags, depth: nu
   return findMatching(text, index, text.length - 1, flags, depth);
 }
 
-function readElement(text: string, index: number, flags: Flags): string {
-  let curr = index;
-  // Skip any leading prefixes
-  while (curr < text.length) {
-    if (text[curr] === "#") {
-      if (curr + 1 < text.length && (text[curr + 1] === "{" || text[curr + 1] === "(")) {
-        curr++;
-        break; // Stop at the delimiter
-      } else if (curr + 1 < text.length && (text[curr + 1] === "?" || text[curr + 1] === "_")) {
-        curr += 2;
-        continue; // Prefix like #? or #_ can be followed by another prefix or form
-      } else {
-        break; // Atom starting with #
-      }
-    } else if ("^'@`~".includes(text[curr])) {
-      curr++;
-      continue;
-    } else {
-      break;
+/**
+ * Skips a single Clojure prefix like #_, #?, ^, ', @, `, ~.
+ * Returns the index of the first character after the prefix.
+ */
+function skipPrefix(text: string, index: number, flags: Flags): number {
+  const char = text[index];
+  if (char === "#") {
+    const next = text[index + 1];
+    if (next === "?" || next === "_") {
+      const nextSig = skipSpaceAndComments(text, index + 2, flags);
+      return nextSig === -1 ? text.length : nextSig;
     }
+  } else if ("^'@`~".includes(char)) {
+    const nextSig = skipSpaceAndComments(text, index + 1, flags);
+    return nextSig === -1 ? text.length : nextSig;
   }
-  if (curr < text.length && isOpenDelimiter(text[curr])) {
-    const closing = findCloseDelimiter(text, curr + 1, flags);
-    const end = closing === -1 ? text.length : closing + 1;
-    return text.slice(index, end);
+  return index;
+}
+
+function readElement(text: string, index: number, flags: Flags): string {
+  let curr = skipPrefix(text, index, flags);
+  if (curr !== index) {
+    const baseElement = readElement(text, curr, flags);
+    return text.slice(index, curr + baseElement.length);
   }
-  const end = find(text, curr, text.length - 1, flags, (c) => isWhitespace(c) || isDelimiter(c));
-  const realEnd = end === -1 ? text.length : end;
-  return text.slice(index, realEnd);
+  let end;
+  if (curr < text.length) {
+    const c = text[curr];
+    const next = text[curr + 1];
+    if (isOpenDelimiter(c) || (c === "#" && (next === "{" || next === "("))) {
+      const openPos = (c === "#") ? curr + 1 : curr;
+      const closePos = findCloseDelimiter(text, openPos + 1, flags);
+      end = closePos === -1 ? text.length : closePos + 1;
+    } else {
+      const atomEnd = find(text, curr, text.length - 1, flags, (c) => isWhitespace(c) || isDelimiter(c));
+      end = atomEnd === -1 ? text.length : atomEnd;
+    }
+  } else {
+    end = text.length;
+  }
+  return text.slice(index, end);
 }
 
 function skipSpaceAndComments(text: string, index: number, flags: Flags): number {
@@ -187,9 +199,15 @@ function getFormIndentation(text: string, openParenIdx: number, flags: Flags): n
   if (openChar !== "(") return openCol + 1;
   const firstElemIdx = skipSpaceAndComments(text, openParenIdx + 1, flags);
   if (firstElemIdx === -1) return openCol + 1;
-  const element = readElement(text, firstElemIdx, flags);
-  const firstElemEnd = firstElemIdx + element.length;
-  if (BODY_FORMS.has(element)) {
+  const fullElement = readElement(text, firstElemIdx, flags);
+  const firstElemEnd = firstElemIdx + fullElement.length;
+  let baseElemIdx = firstElemIdx;
+  let nextIdx;
+  while ((nextIdx = skipPrefix(text, baseElemIdx, flags)) !== baseElemIdx) {
+    baseElemIdx = nextIdx;
+  }
+  const baseElement = readElement(text, baseElemIdx, flags);
+  if (BODY_FORMS.has(baseElement)) {
     return openCol + 2;
   }
   const firstArgIdx = skipSpaceAndComments(text, firstElemEnd, flags);
