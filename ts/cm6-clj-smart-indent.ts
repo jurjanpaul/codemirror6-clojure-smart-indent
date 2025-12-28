@@ -64,12 +64,6 @@ function getColumn(text: string, index: number): number {
   return index - (lastNewline === -1 ? 0 : lastNewline + 1);
 }
 
-function getLineAt(text: string, index: number): string {
-  const start = text.lastIndexOf("\n", index - 1) + 1;
-  const end = text.indexOf("\n", index);
-  return text.slice(start, end === -1 ? text.length : end);
-}
-
 function getIndentation(line: string): string {
   const match = line.match(/^[ \t]*/);
   return match ? match[0] : "";
@@ -204,9 +198,9 @@ export function calculateIndentation(prefix: string): string {
   if (openParenIdx !== -1) {
     return " ".repeat(getFormIndentation(prefix, openParenIdx, flags));
   }
-  const closingParenIdx = findUnmatchedCloseDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
-  if (closingParenIdx !== -1) {
-    const matchingOpenIdx = findOpenDelimiter(prefix, closingParenIdx, flags, -1);
+  const closeDelimiterIdx = findUnmatchedCloseDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart + 1);
+  if (closeDelimiterIdx !== -1) {
+    const matchingOpenIdx = findOpenDelimiter(prefix, closeDelimiterIdx - 1, flags);
     if (matchingOpenIdx !== -1) {
       const matchingOpenLineStart = prefix.lastIndexOf("\n", matchingOpenIdx);
       return " ".repeat(matchingOpenIdx - matchingOpenLineStart - 1);
