@@ -116,12 +116,15 @@ function findLastSignificantCharIdx(text: string, index: number, flags: Flags, m
   return findBackward(text, index, minIndex, flags, notWhitespace);
 }
 
-function findOpenDelimiter(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
-  return findBackward(text, index, minIndex, flags, (char) => {
-    // Note: this does not currently bother about delimiters having to match!
-    if (isCloseDelimiter(char)) {
+function findMatching(text: string, index: number, flags: Flags, direction: "forward" | "backward", limit: number, depth: number = 0): number {
+  const isForward = direction === "forward";
+  const openPred = isForward ? isOpenDelimiter : isCloseDelimiter;
+  const closePred = isForward ? isCloseDelimiter : isOpenDelimiter;
+  const findFunc = isForward ? findForward : findBackward;
+  return findFunc(text, index, limit, flags, (char) => {
+    if (openPred(char)) {
       depth++;
-    } else if (isOpenDelimiter(char)) {
+    } else if (closePred(char)) {
       if (depth === 0) return true;
       depth--;
     }
@@ -129,17 +132,12 @@ function findOpenDelimiter(text: string, index: number, flags: Flags, depth: num
   });
 }
 
+function findOpenDelimiter(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
+  return findMatching(text, index, flags, "backward", minIndex, depth);
+}
+
 function findCloseDelimiter(text: string, index: number, flags: Flags, depth: number = 0): number {
-  return findForward(text, index, text.length - 1, flags, (char) => {
-    // Note: this does not currently bother about delimiters having to match!
-    if (isOpenDelimiter(char)) {
-      depth++;
-    } else if (isCloseDelimiter(char)) {
-      if (depth === 0) return true;
-      depth--;
-    }
-    return false;
-  });
+  return findMatching(text, index, flags, "forward", text.length - 1, depth);
 }
 
 function isDelimiter(char: string): boolean {
@@ -191,7 +189,7 @@ function getFormIndentation(text: string, openParenIdx: number, flags: Flags): n
   return openCol + 1;
 }
 
-function findUnmatchedCloseDelimiter(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
+function findOutermostCloseDelimiter(text: string, index: number, flags: Flags, depth: number = 0, minIndex: number = 0): number {
   let candidate = -1;
   findBackward(text, index, minIndex, flags, (char, i) => {
     if (isCloseDelimiter(char)) {
@@ -213,32 +211,28 @@ function findUnmatchedCloseDelimiter(text: string, index: number, flags: Flags, 
 }
 
 function getFormStart(text: string, openIdx: number, flags: Flags): number {
-  if (openIdx > 0 && text[openIdx - 1] === '#') {
-    return openIdx - 1;
-  }
-  let curr = openIdx - 1;
+  let start = openIdx;
+  if (start > 0 && text[start - 1] === "#") return start - 1;
+  let curr = start - 1;
   while (curr >= 0) {
     if (isWhitespace(text[curr]) || inComment(flags, curr)) {
       curr--;
       continue;
     }
     const char = text[curr];
-    if (char === '^' || char === '\'' || char === '@' || char === '`' || char === '~') {
-      return getFormStart(text, curr, flags);
+    if ("^'@`~".includes(char)) {
+      start = curr;
+      curr--;
+      continue;
     }
-    if (char === '_') {
-      if (curr > 0 && text[curr - 1] === '#') {
-        return getFormStart(text, curr - 1, flags);
-      }
-    }
-    if (char === '?') {
-      if (curr > 0 && text[curr - 1] === '#') {
-        return getFormStart(text, curr - 1, flags);
-      }
+    if ((char === "_" || char === "?") && curr > 0 && text[curr - 1] === "#") {
+      start = curr - 1;
+      curr -= 2;
+      continue;
     }
     break;
   }
-  return openIdx;
+  return start;
 }
 
 export function calculateIndentation(prefix: string): number {
@@ -258,13 +252,12 @@ export function calculateIndentation(prefix: string): number {
   if (openParenIdx !== -1) {
     return getFormIndentation(prefix, openParenIdx, flags);
   }
-  const closeDelimiterIdx = findUnmatchedCloseDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart);
+  const closeDelimiterIdx = findOutermostCloseDelimiter(prefix, lastSignificantCharIdx, flags, 0, lastSignificantLineStart);
   if (closeDelimiterIdx !== -1) {
     const matchingOpenIdx = findOpenDelimiter(prefix, closeDelimiterIdx - 1, flags);
     if (matchingOpenIdx !== -1) {
       const formStartIdx = getFormStart(prefix, matchingOpenIdx, flags);
-      const formStartLineStart = getLineStart(prefix, formStartIdx);
-      return formStartIdx - formStartLineStart;
+      return getColumn(prefix, formStartIdx);
     }
   }
   const lastSignificantLine = prefix.slice(lastSignificantLineStart, lastSignificantCharIdx + 1);
