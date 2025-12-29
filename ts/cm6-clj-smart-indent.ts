@@ -9,7 +9,7 @@ interface ParsedText {
 }
 
 interface FindPredicates {
-  match: (char: string, index: number) => boolean | void;
+  match?: (char: string, index: number) => boolean | void;
   shouldSkip?: (parsed: ParsedText, index: number) => boolean;
 }
 
@@ -91,8 +91,6 @@ function getIndentationLength(line: string): number {
   return match ? match[0].length : 0;
 }
 
-function isAnyChar(): boolean { return true; }
-
 function isWhitespace(c: string): boolean {
   return c === " " || c === "," || c === "\n" || c === "\r" || c === "\t";
 }
@@ -118,7 +116,7 @@ function isDelimiter(char: string): boolean {
 }
 
 function find(parsed: ParsedText, index: number, limit: number, predicates: FindPredicates): number {
-  const { match, shouldSkip = isIgnored } = predicates;
+  const { match = () => true, shouldSkip = isIgnored } = predicates;
   const scanForward = index < limit;
   const step = scanForward ? 1 : -1;
   for (let i = index; scanForward ? i <= limit : i >= limit; i += step) {
@@ -171,10 +169,7 @@ function readElement(parsed: ParsedText, index: number): string {
         return true;
       }
     }
-    if (depth < 0) {
-      return true;
-    }
-    return false;
+    return depth < 0;
   }
   const lastCharIdx = find(parsed, index, parsed.text.length - 1, { match: isEndOfElement });
   if (lastCharIdx === -1) {
@@ -188,7 +183,7 @@ function readElement(parsed: ParsedText, index: number): string {
 
 function skipSpaceAndComments(parsed: ParsedText, index: number): number {
   if (index >= parsed.text.length) return -1;
-  return find(parsed, index, parsed.text.length - 1, { match: isAnyChar, shouldSkip: isSpaceOrComment });
+  return find(parsed, index, parsed.text.length - 1, { shouldSkip: isSpaceOrComment });
 }
 
 function getFormIndentation(parsed: ParsedText, openParenIdx: number): number {
@@ -239,7 +234,7 @@ function getFormStart(parsed: ParsedText, openIdx: number): number {
   if (start > 0 && parsed.text[start - 1] === "#") return start - 1;
   let curr = start - 1;
   while (curr >= 0) {
-    const found = find(parsed, curr, 0, { match: isAnyChar, shouldSkip: isSpaceOrComment });
+    const found = find(parsed, curr, 0, { shouldSkip: isSpaceOrComment });
     if (found === -1) break;
     curr = found;
     const char = parsed.text[curr];
