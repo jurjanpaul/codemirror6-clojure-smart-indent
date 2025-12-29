@@ -8,6 +8,11 @@ interface ParsedText {
   flags: Flags;
 }
 
+interface FindPredicates {
+  match: (char: string, index: number) => boolean | void;
+  shouldSkip?: (parsed: ParsedText, index: number) => boolean;
+}
+
 const FLAG_ESCAPE = 1;
 const FLAG_COMMENT = 2;
 const FLAG_STRING = 4;
@@ -112,18 +117,19 @@ function isDelimiter(char: string): boolean {
   return isOpenDelimiter(char) || isCloseDelimiter(char);
 }
 
-function find(parsed: ParsedText, index: number, limit: number, pred: (char: string, index: number) => boolean | void, shouldSkip: (parsed: ParsedText, index: number) => boolean = isIgnored): number {
+function find(parsed: ParsedText, index: number, limit: number, predicates: FindPredicates): number {
+  const { match, shouldSkip = isIgnored } = predicates;
   const scanForward = index < limit;
   const step = scanForward ? 1 : -1;
   for (let i = index; scanForward ? i <= limit : i >= limit; i += step) {
     if (shouldSkip(parsed, i)) continue;
-    if (pred(parsed.text[i], i)) return i;
+    if (match(parsed.text[i], i)) return i;
   }
   return -1;
 }
 
 function findLastSignificantCharIdx(parsed: ParsedText, index: number, minIndex: number = 0): number {
-  return find(parsed, index, minIndex, notWhitespace);
+  return find(parsed, index, minIndex, { match: notWhitespace });
 }
 
 function findMatching(parsed: ParsedText, index: number, limit: number, depth: number = 0): number {
@@ -139,7 +145,7 @@ function findMatching(parsed: ParsedText, index: number, limit: number, depth: n
     }
     return false;
   }
-  return find(parsed, index, limit, match);
+  return find(parsed, index, limit, { match });
 }
 
 function findOpenDelimiter(parsed: ParsedText, index: number, minIndex: number = 0): number {
@@ -170,7 +176,7 @@ function readElement(parsed: ParsedText, index: number): string {
     }
     return false;
   }
-  const lastCharIdx = find(parsed, index, parsed.text.length - 1, isEndOfElement);
+  const lastCharIdx = find(parsed, index, parsed.text.length - 1, { match: isEndOfElement });
   if (lastCharIdx === -1) {
     return parsed.text.slice(index);
   }
@@ -182,7 +188,7 @@ function readElement(parsed: ParsedText, index: number): string {
 
 function skipSpaceAndComments(parsed: ParsedText, index: number): number {
   if (index >= parsed.text.length) return -1;
-  return find(parsed, index, parsed.text.length - 1, isAnyChar, isSpaceOrComment);
+  return find(parsed, index, parsed.text.length - 1, { match: isAnyChar, shouldSkip: isSpaceOrComment });
 }
 
 function getFormIndentation(parsed: ParsedText, openParenIdx: number): number {
@@ -224,7 +230,7 @@ function findOutermostCloseDelimiter(parsed: ParsedText, index: number, minIndex
     }
     return false;
   }
-  find(parsed, index, minIndex, updateCandidate);
+  find(parsed, index, minIndex, { match: updateCandidate });
   return candidate;
 }
 
@@ -233,7 +239,7 @@ function getFormStart(parsed: ParsedText, openIdx: number): number {
   if (start > 0 && parsed.text[start - 1] === "#") return start - 1;
   let curr = start - 1;
   while (curr >= 0) {
-    const found = find(parsed, curr, 0, isAnyChar, isSpaceOrComment);
+    const found = find(parsed, curr, 0, { match: isAnyChar, shouldSkip: isSpaceOrComment });
     if (found === -1) break;
     curr = found;
     const char = parsed.text[curr];
