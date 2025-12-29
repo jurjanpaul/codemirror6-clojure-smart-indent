@@ -96,7 +96,7 @@ function isCloseDelimiter(char: string): boolean {
 }
 
 interface FindPredicates {
-  match?: (char: string, index: number) => boolean | void;
+  match?: (char: string, index: number) => boolean;
   shouldSkip?: (parsed: ParsedText, index: number) => boolean;
 }
 
@@ -115,24 +115,18 @@ function findLastSignificantCharIdx(parsed: ParsedText): number {
   return find(parsed, parsed.text.length - 1, 0, { match: notWhitespace });
 }
 
-function findMatching(parsed: ParsedText, index: number, limit: number, depth: number = 0): number {
-  const scanForward = index < limit;
-  const openPred = scanForward ? isOpenDelimiter : isCloseDelimiter;
-  const closePred = scanForward ? isCloseDelimiter : isOpenDelimiter;
+function findOpenDelimiter(parsed: ParsedText, index: number, limit: number): number {
+  let depth = 0;
   function match(char: string): boolean {
-    if (openPred(char)) {
+    if (isCloseDelimiter(char)) {
       depth++;
-    } else if (closePred(char)) {
+    } else if (isOpenDelimiter(char)) {
       if (depth === 0) return true;
       depth--;
     }
     return false;
   }
   return find(parsed, index, limit, { match });
-}
-
-function findOpenDelimiter(parsed: ParsedText, index: number, minIndex: number = 0): number {
-  return findMatching(parsed, index, minIndex);
 }
 
 function readElement(parsed: ParsedText, index: number): string {
