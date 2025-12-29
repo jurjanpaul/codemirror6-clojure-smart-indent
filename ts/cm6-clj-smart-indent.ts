@@ -3,16 +3,6 @@ import type { Extension, Facet } from "@codemirror/state"
 
 type Flags = Uint8Array;
 
-interface ParsedText {
-  text: string;
-  flags: Flags;
-}
-
-interface FindPredicates {
-  match?: (char: string, index: number) => boolean | void;
-  shouldSkip?: (parsed: ParsedText, index: number) => boolean;
-}
-
 const FLAG_ESCAPE = 1;
 const FLAG_COMMENT = 2;
 const FLAG_STRING = 4;
@@ -54,16 +44,26 @@ function hasFlag(flags: Flags, index: number, flag: number): boolean {
   return (flags[index] & flag) !== 0;
 }
 
+interface ParsedText {
+  text: string;
+  flags: Flags;
+}
+
+interface FindPredicates {
+  match?: (char: string, index: number) => boolean | void;
+  shouldSkip?: (parsed: ParsedText, index: number) => boolean;
+}
+
 function isIgnored(parsed: ParsedText, index: number): boolean {
   return hasFlag(parsed.flags, index, FLAG_STRING | FLAG_COMMENT | FLAG_ESCAPE);
 }
 
-function inString(flags: Flags, index: number): boolean {
-  return hasFlag(flags, index, FLAG_STRING);
+function inString(parsed: ParsedText, index: number): boolean {
+  return hasFlag(parsed.flags, index, FLAG_STRING);
 }
 
-function inComment(flags: Flags, index: number): boolean {
-  return hasFlag(flags, index, FLAG_COMMENT);
+function inComment(parsed: ParsedText, index: number): boolean {
+  return hasFlag(parsed.flags, index, FLAG_COMMENT);
 }
 
 const BODY_FORMS = new Set([
@@ -100,7 +100,7 @@ function notWhitespace(c: string): boolean {
 }
 
 function isSpaceOrComment(parsed: ParsedText, i: number): boolean {
-  return isWhitespace(parsed.text[i]) || inComment(parsed.flags, i);
+  return isWhitespace(parsed.text[i]) || inComment(parsed, i);
 }
 
 function isOpenDelimiter(char: string): boolean {
@@ -257,11 +257,10 @@ export function calculateIndentation(prefix: string): number {
   if (prefix == "") {
     return 0;
   }
-  const flags = parse(prefix);
-  if (inString(flags, flags.length - 1)) {
+  const parsed = { text: prefix, flags: parse(prefix) };
+  if (inString(parsed, prefix.length - 1)) {
     return 0;
   }
-  const parsed = { text: prefix, flags };
   let lastSignificantCharIdx = findLastSignificantCharIdx(parsed, prefix.length - 1);
   if (lastSignificantCharIdx === -1) {
     return 0;
