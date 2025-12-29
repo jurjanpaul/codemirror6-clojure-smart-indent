@@ -44,7 +44,7 @@ function hasFlag(flags: Flags, index: number, flag: number): boolean {
   return (flags[index] & flag) !== 0;
 }
 
-function isIgnored(_text: string, flags: Flags, index: number): boolean {
+function isIgnored(flags: Flags, _text: string, index: number): boolean {
   return hasFlag(flags, index, FLAG_STRING | FLAG_COMMENT | FLAG_ESCAPE);
 }
 
@@ -91,7 +91,7 @@ function notWhitespace(c: string): boolean {
   return !isWhitespace(c);
 }
 
-function isSpaceOrComment(text: string, flags: Flags, i: number): boolean {
+function isSpaceOrComment(flags: Flags, text: string, i: number): boolean {
   return isWhitespace(text[i]) || inComment(flags, i);
 }
 
@@ -107,21 +107,21 @@ function isDelimiter(char: string): boolean {
   return isOpenDelimiter(char) || isCloseDelimiter(char);
 }
 
-function find(text: string, index: number, limit: number, flags: Flags, pred: (char: string, index: number) => boolean | void, shouldSkip: (text: string, flags: Flags, index: number) => boolean = isIgnored): number {
+function find(flags: Flags, text: string, index: number, limit: number, pred: (char: string, index: number) => boolean | void, shouldSkip: (flags: Flags, text: string, index: number) => boolean = isIgnored): number {
   const scanForward = index < limit;
   const step = scanForward ? 1 : -1;
   for (let i = index; scanForward ? i <= limit : i >= limit; i += step) {
-    if (shouldSkip(text, flags, i)) continue;
+    if (shouldSkip(flags, text, i)) continue;
     if (pred(text[i], i)) return i;
   }
   return -1;
 }
 
-function findLastSignificantCharIdx(text: string, index: number, flags: Flags, minIndex: number = 0): number {
-  return find(text, index, minIndex, flags, notWhitespace);
+function findLastSignificantCharIdx(flags: Flags, text: string, index: number, minIndex: number = 0): number {
+  return find(flags, text, index, minIndex, notWhitespace);
 }
 
-function findMatching(text: string, index: number, limit: number, flags: Flags, depth: number = 0): number {
+function findMatching(flags: Flags, text: string, index: number, limit: number, depth: number = 0): number {
   const scanForward = index < limit;
   const openPred = scanForward ? isOpenDelimiter : isCloseDelimiter;
   const closePred = scanForward ? isCloseDelimiter : isOpenDelimiter;
@@ -134,18 +134,18 @@ function findMatching(text: string, index: number, limit: number, flags: Flags, 
     }
     return false;
   }
-  return find(text, index, limit, flags, match);
+  return find(flags, text, index, limit, match);
 }
 
-function findOpenDelimiter(text: string, index: number, minIndex: number = 0, flags: Flags): number {
-  return findMatching(text, index, minIndex, flags);
+function findOpenDelimiter(flags: Flags, text: string, index: number, minIndex: number = 0): number {
+  return findMatching(flags, text, index, minIndex);
 }
 
-function findCloseDelimiter(text: string, index: number, flags: Flags, depth: number = 0): number {
-  return findMatching(text, index, text.length - 1, flags, depth);
+function findCloseDelimiter(flags: Flags, text: string, index: number, depth: number = 0): number {
+  return findMatching(flags, text, index, text.length - 1, depth);
 }
 
-function readElement(text: string, index: number, flags: Flags): string {
+function readElement(flags: Flags, text: string, index: number): string {
   if (index >= text.length) return "";
   let depth = 0;
   function isEndOfElement(char: string, i: number): boolean {
@@ -165,7 +165,7 @@ function readElement(text: string, index: number, flags: Flags): string {
     }
     return false;
   }
-  const lastCharIdx = find(text, index, text.length - 1, flags, isEndOfElement);
+  const lastCharIdx = find(flags, text, index, text.length - 1, isEndOfElement);
   if (lastCharIdx === -1) {
     return text.slice(index);
   }
@@ -175,23 +175,23 @@ function readElement(text: string, index: number, flags: Flags): string {
   return text.slice(index, lastCharIdx + 1);
 }
 
-function skipSpaceAndComments(text: string, index: number, flags: Flags): number {
+function skipSpaceAndComments(flags: Flags, text: string, index: number): number {
   if (index >= text.length) return -1;
-  return find(text, index, text.length - 1, flags, isAnyChar, isSpaceOrComment);
+  return find(flags, text, index, text.length - 1, isAnyChar, isSpaceOrComment);
 }
 
-function getFormIndentation(text: string, openParenIdx: number, flags: Flags): number {
+function getFormIndentation(flags: Flags, text: string, openParenIdx: number): number {
   const openChar = text[openParenIdx];
   const openCol = getColumn(text, openParenIdx);
   if (openChar !== "(") return openCol + 1;
-  const firstElemIdx = skipSpaceAndComments(text, openParenIdx + 1, flags);
+  const firstElemIdx = skipSpaceAndComments(flags, text, openParenIdx + 1);
   if (firstElemIdx === -1) return openCol + 1;
-  const element = readElement(text, firstElemIdx, flags);
+  const element = readElement(flags, text, firstElemIdx);
   const firstElemEnd = firstElemIdx + element.length;
   if (BODY_FORMS.has(element)) {
     return openCol + 2;
   }
-  const firstArgIdx = skipSpaceAndComments(text, firstElemEnd, flags);
+  const firstArgIdx = skipSpaceAndComments(flags, text, firstElemEnd);
   if (firstArgIdx !== -1) {
     const firstArgLineStart = getLineStart(text, firstArgIdx);
     const lineStart = getLineStart(text, openParenIdx);
@@ -202,7 +202,7 @@ function getFormIndentation(text: string, openParenIdx: number, flags: Flags): n
   return openCol + 1;
 }
 
-function findOutermostCloseDelimiter(text: string, index: number, minIndex: number = 0, flags: Flags): number {
+function findOutermostCloseDelimiter(flags: Flags, text: string, index: number, minIndex: number = 0): number {
   let candidate = -1;
   let depth = 0;
   function updateCandidate(char: string, i: number): boolean {
@@ -221,16 +221,16 @@ function findOutermostCloseDelimiter(text: string, index: number, minIndex: numb
     }
     return false;
   }
-  find(text, index, minIndex, flags, updateCandidate);
+  find(flags, text, index, minIndex, updateCandidate);
   return candidate;
 }
 
-function getFormStart(text: string, openIdx: number, flags: Flags): number {
+function getFormStart(flags: Flags, text: string, openIdx: number): number {
   let start = openIdx;
   if (start > 0 && text[start - 1] === "#") return start - 1;
   let curr = start - 1;
   while (curr >= 0) {
-    const found = find(text, curr, 0, flags, isAnyChar, isSpaceOrComment);
+    const found = find(flags, text, curr, 0, isAnyChar, isSpaceOrComment);
     if (found === -1) break;
     curr = found;
     const char = text[curr];
@@ -257,20 +257,20 @@ export function calculateIndentation(prefix: string): number {
   if (inString(flags, flags.length - 1)) {
     return 0;
   }
-  let lastSignificantCharIdx = findLastSignificantCharIdx(prefix, prefix.length - 1, flags);
+  let lastSignificantCharIdx = findLastSignificantCharIdx(flags, prefix, prefix.length - 1);
   if (lastSignificantCharIdx === -1) {
     return 0;
   }
   const lastSignificantLineStart = getLineStart(prefix, lastSignificantCharIdx);
-  const openParenIdx = findOpenDelimiter(prefix, lastSignificantCharIdx, lastSignificantLineStart, flags);
+  const openParenIdx = findOpenDelimiter(flags, prefix, lastSignificantCharIdx, lastSignificantLineStart);
   if (openParenIdx !== -1) {
-    return getFormIndentation(prefix, openParenIdx, flags);
+    return getFormIndentation(flags, prefix, openParenIdx);
   }
-  const closeDelimiterIdx = findOutermostCloseDelimiter(prefix, lastSignificantCharIdx, lastSignificantLineStart, flags);
+  const closeDelimiterIdx = findOutermostCloseDelimiter(flags, prefix, lastSignificantCharIdx, lastSignificantLineStart);
   if (closeDelimiterIdx !== -1) {
-    const matchingOpenIdx = findOpenDelimiter(prefix, closeDelimiterIdx - 1, 0, flags);
+    const matchingOpenIdx = findOpenDelimiter(flags, prefix, closeDelimiterIdx - 1, 0);
     if (matchingOpenIdx !== -1) {
-      const formStartIdx = getFormStart(prefix, matchingOpenIdx, flags);
+      const formStartIdx = getFormStart(flags, prefix, matchingOpenIdx);
       return getColumn(prefix, formStartIdx);
     }
   }
