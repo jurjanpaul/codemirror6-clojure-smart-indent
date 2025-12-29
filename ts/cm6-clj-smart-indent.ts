@@ -33,14 +33,16 @@ function parse(text: string): ParsedText {
         inString = false;
         flags[i] = FLAG_ESCAPE;
       }
+      else {
+        flags[i] = FLAG_STRING;
+      }
     } else if (char === '"') {
       inString = true;
-      flags[i] = FLAG_STRING | FLAG_ESCAPE;
+      flags[i] = FLAG_STRING;
     } else if (char === ';') {
       inComment = true;
       flags[i] = FLAG_COMMENT;
     }
-    if (inString) flags[i] |= FLAG_STRING;
   }
   return { text, flags }
 }
@@ -115,7 +117,7 @@ function findLastSignificantCharIdx(parsed: ParsedText): number {
   return find(parsed, parsed.text.length - 1, 0, { match: notWhitespace });
 }
 
-function findOpenDelimiter(parsed: ParsedText, index: number, limit: number): number {
+function findOpenDelimiter(parsed: ParsedText, index: number, limit: number = 0): number {
   let depth = 0;
   function match(char: string): boolean {
     if (isCloseDelimiter(char)) {
@@ -230,7 +232,7 @@ function calculateIndentationInner(parsed: ParsedText): number {
   }
   const closeDelimiterIdx = findOutermostCloseDelimiter(parsed, lastSignificantCharIdx, lastSignificantLineStart);
   if (closeDelimiterIdx !== -1) {
-    const matchingOpenIdx = findOpenDelimiter(parsed, closeDelimiterIdx - 1, 0);
+    const matchingOpenIdx = findOpenDelimiter(parsed, closeDelimiterIdx - 1);
     if (matchingOpenIdx !== -1) {
       return dedent(parsed, matchingOpenIdx);
     }
