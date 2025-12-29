@@ -209,23 +209,25 @@ function getFormIndentation(parsed: ParsedText, openParenIdx: number): number {
 function findOutermostCloseDelimiter(parsed: ParsedText, index: number, minIndex: number = 0): number {
   let candidate = -1;
   let depth = 0;
-  function updateCandidate(char: string, i: number): boolean {
+  function trackOutermost(char: string, i: number): boolean {
     if (isCloseDelimiter(char)) {
       depth++;
+      // We found a closing delimiter that might be the outermost one on this line.
+      // If depth becomes 1, it means this delimiter is not matched by any following (to the right) opening delimiter we've seen so far.
       if (depth === 1) {
         candidate = i;
       }
-    } else if (isOpenDelimiter(char)) {
-      if (depth > 0) {
-        depth--;
-        if (depth === 0) {
-          candidate = -1;
-        }
+    } else if (isOpenDelimiter(char) && depth > 0) {
+      depth--;
+      // If depth returns to 0, the candidate we were tracking was just matched by this opening delimiter.
+      // So it wasn't the outermost unmatched delimiter after all.
+      if (depth === 0) {
+        candidate = -1;
       }
     }
     return false;
   }
-  find(parsed, index, minIndex, { match: updateCandidate });
+  find(parsed, index, minIndex, { match: trackOutermost });
   return candidate;
 }
 
