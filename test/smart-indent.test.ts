@@ -108,7 +108,7 @@ describe("Clojure Smart Indent", () => {
   });
 
   describe("Dedenting and Closing Forms", () => {
-    it("should return to the indentation of the parent form after closing a child form", () => {
+    it("should return to previous indentation after closing a form", () => {
       assertSmartIndent("(foo\n  (bar\n    baz)\n  |)",
                         "(foo\n  (bar\n    baz)|");
     });
@@ -157,22 +157,22 @@ describe("Clojure Smart Indent", () => {
   });
 
   describe("Forms with Prefixes", () => {
-    it("should dedent to the start of the set literal (not the brace)", () => {
+    it("should dedent to the start of the set literal", () => {
       assertSmartIndent("#{1\n  2}\n|",
                         "#{1\n  2}|");
     });
 
-    it("should dedent to the start of the reader conditional (not the paren)", () => {
+    it("should dedent to the start of the reader conditional", () => {
       assertSmartIndent("#?(:clj 1\n   :cljs 2)\n|",
                         "#?(:clj 1\n   :cljs 2)|");
     });
 
-    it("should dedent to the start of the anonymous function literal (not the paren)", () => {
+    it("should dedent to the start of the anonymous function literal", () => {
       assertSmartIndent("#(\n  inc %)\n|",
                         "#(\n  inc %)|");
     });
 
-    it("should dedent to the start of the metadata map (not the brace)", () => {
+    it("should dedent to the start of the metadata map", () => {
       assertSmartIndent("^{\n  :a 1}\n|",
                         "^{\n  :a 1}|");
     });
