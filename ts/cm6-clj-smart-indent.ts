@@ -44,7 +44,7 @@ function hasFlag(flags: Flags, index: number, flag: number): boolean {
   return (flags[index] & flag) !== 0;
 }
 
-function isIgnored(flags: Flags, index: number): boolean {
+function isIgnored(_text: string, flags: Flags, index: number): boolean {
   return hasFlag(flags, index, FLAG_STRING | FLAG_COMMENT | FLAG_ESCAPE);
 }
 
@@ -81,12 +81,18 @@ function getIndentationLength(line: string): number {
   return match ? match[0].length : 0;
 }
 
+function isAnyChar(): boolean { return true; }
+
 function isWhitespace(c: string): boolean {
   return c === " " || c === "," || c === "\n" || c === "\r" || c === "\t";
 }
 
 function notWhitespace(c: string): boolean {
   return !isWhitespace(c);
+}
+
+function isSpaceOrComment(text: string, flags: Flags, i: number): boolean {
+  return isWhitespace(text[i]) || inComment(flags, i);
 }
 
 function isOpenDelimiter(char: string): boolean {
@@ -101,11 +107,11 @@ function isDelimiter(char: string): boolean {
   return isOpenDelimiter(char) || isCloseDelimiter(char);
 }
 
-function find(text: string, index: number, limit: number, flags: Flags, pred: (char: string, index: number) => boolean | void, skipIgnored: boolean = true): number {
+function find(text: string, index: number, limit: number, flags: Flags, pred: (char: string, index: number) => boolean | void, shouldSkip: (text: string, flags: Flags, index: number) => boolean = isIgnored): number {
   const scanForward = index < limit;
   const step = scanForward ? 1 : -1;
   for (let i = index; scanForward ? i <= limit : i >= limit; i += step) {
-    if (skipIgnored && isIgnored(flags, i)) continue;
+    if (shouldSkip(text, flags, i)) continue;
     if (pred(text[i], i)) return i;
   }
   return -1;
@@ -119,7 +125,7 @@ function findMatching(text: string, index: number, limit: number, flags: Flags, 
   const scanForward = index < limit;
   const openPred = scanForward ? isOpenDelimiter : isCloseDelimiter;
   const closePred = scanForward ? isCloseDelimiter : isOpenDelimiter;
-  return find(text, index, limit, flags, (char) => {
+  function match(char: string): boolean {
     if (openPred(char)) {
       depth++;
     } else if (closePred(char)) {
@@ -127,7 +133,8 @@ function findMatching(text: string, index: number, limit: number, flags: Flags, 
       depth--;
     }
     return false;
-  });
+  }
+  return find(text, index, limit, flags, match);
 }
 
 function findOpenDelimiter(text: string, index: number, minIndex: number = 0, flags: Flags): number {
@@ -139,41 +146,38 @@ function findCloseDelimiter(text: string, index: number, flags: Flags, depth: nu
 }
 
 function readElement(text: string, index: number, flags: Flags): string {
+  if (index >= text.length) return "";
   let depth = 0;
-  let i = index;
-  while (i < text.length) {
-    if (isIgnored(flags, i)) {
-      i++;
-      continue;
-    }
-    const char = text[i];
+  function isEndOfElement(char: string, i: number): boolean {
     if (isOpenDelimiter(char)) {
       depth++;
     } else if (isCloseDelimiter(char)) {
       depth--;
     }
-    i++;
-    if (depth === 0 && (i === text.length || isWhitespace(text[i]))) {
-      break;
+    if (depth === 0) {
+      const nextI = i + 1;
+      if (nextI === text.length || isWhitespace(text[nextI])) {
+        return true;
+      }
     }
     if (depth < 0) {
-      i--;
-      break;
+      return true;
     }
+    return false;
   }
-  return text.slice(index, i);
+  const lastCharIdx = find(text, index, text.length - 1, flags, isEndOfElement);
+  if (lastCharIdx === -1) {
+    return text.slice(index);
+  }
+  if (depth < 0) {
+    return text.slice(index, lastCharIdx);
+  }
+  return text.slice(index, lastCharIdx + 1);
 }
 
 function skipSpaceAndComments(text: string, index: number, flags: Flags): number {
-  let curr = index;
-  while (curr < text.length) {
-    if (isWhitespace(text[curr]) || inComment(flags, curr)) {
-      curr++;
-      continue;
-    }
-    return curr;
-  }
-  return -1;
+  if (index >= text.length) return -1;
+  return find(text, index, text.length - 1, flags, isAnyChar, isSpaceOrComment);
 }
 
 function getFormIndentation(text: string, openParenIdx: number, flags: Flags): number {
@@ -201,7 +205,7 @@ function getFormIndentation(text: string, openParenIdx: number, flags: Flags): n
 function findOutermostCloseDelimiter(text: string, index: number, minIndex: number = 0, flags: Flags): number {
   let candidate = -1;
   let depth = 0;
-  find(text, index, minIndex, flags, (char, i) => {
+  function updateCandidate(char: string, i: number): boolean {
     if (isCloseDelimiter(char)) {
       depth++;
       if (depth === 1) {
@@ -216,7 +220,8 @@ function findOutermostCloseDelimiter(text: string, index: number, minIndex: numb
       }
     }
     return false;
-  });
+  }
+  find(text, index, minIndex, flags, updateCandidate);
   return candidate;
 }
 
@@ -225,10 +230,9 @@ function getFormStart(text: string, openIdx: number, flags: Flags): number {
   if (start > 0 && text[start - 1] === "#") return start - 1;
   let curr = start - 1;
   while (curr >= 0) {
-    if (isWhitespace(text[curr]) || inComment(flags, curr)) {
-      curr--;
-      continue;
-    }
+    const found = find(text, curr, 0, flags, isAnyChar, isSpaceOrComment);
+    if (found === -1) break;
+    curr = found;
     const char = text[curr];
     if ("^'@`~".includes(char)) {
       start = curr;
