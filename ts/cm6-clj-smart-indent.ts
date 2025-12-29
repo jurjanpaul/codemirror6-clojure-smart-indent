@@ -139,34 +139,29 @@ function findCloseDelimiter(text: string, index: number, flags: Flags, depth: nu
 }
 
 function readElement(text: string, index: number, flags: Flags): string {
-  let curr = index;
-  // Skip any leading prefixes
-  while (curr < text.length) {
-    if (text[curr] === "#") {
-      if (curr + 1 < text.length && (text[curr + 1] === "{" || text[curr + 1] === "(")) {
-        curr++;
-        break; // Stop at the delimiter
-      } else if (curr + 1 < text.length && (text[curr + 1] === "?" || text[curr + 1] === "_")) {
-        curr += 2;
-        continue; // Prefix like #? or #_ can be followed by another prefix or form
-      } else {
-        break; // Atom starting with #
-      }
-    } else if ("^'@`~".includes(text[curr])) {
-      curr++;
+  let depth = 0;
+  let i = index;
+  while (i < text.length) {
+    if (isIgnored(flags, i)) {
+      i++;
       continue;
-    } else {
+    }
+    const char = text[i];
+    if (isOpenDelimiter(char)) {
+      depth++;
+    } else if (isCloseDelimiter(char)) {
+      depth--;
+    }
+    i++;
+    if (depth === 0 && (i === text.length || isWhitespace(text[i]))) {
+      break;
+    }
+    if (depth < 0) {
+      i--;
       break;
     }
   }
-  if (curr < text.length && isOpenDelimiter(text[curr])) {
-    const closing = findCloseDelimiter(text, curr + 1, flags);
-    const end = closing === -1 ? text.length : closing + 1;
-    return text.slice(index, end);
-  }
-  const end = find(text, curr, text.length - 1, flags, (c) => isWhitespace(c) || isDelimiter(c));
-  const realEnd = end === -1 ? text.length : end;
-  return text.slice(index, realEnd);
+  return text.slice(index, i);
 }
 
 function skipSpaceAndComments(text: string, index: number, flags: Flags): number {
