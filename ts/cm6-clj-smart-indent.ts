@@ -106,7 +106,7 @@ interface FindPredicates {
   shouldSkip?: (parsed: ParsedText, index: number) => boolean;
 }
 
-function find(parsed: ParsedText, index: number, limit: number, predicates: FindPredicates): number {
+function scan(parsed: ParsedText, index: number, limit: number, predicates: FindPredicates): number {
   const { match = () => true, shouldSkip = isIgnored } = predicates;
   const scanForward = index < limit;
   const step = scanForward ? 1 : -1;
@@ -118,7 +118,7 @@ function find(parsed: ParsedText, index: number, limit: number, predicates: Find
 }
 
 function findLastSignificantCharIdx(parsed: ParsedText): number {
-  return find(parsed, parsed.text.length - 1, 0, { match: notWhitespace });
+  return scan(parsed, parsed.text.length - 1, 0, { match: notWhitespace });
 }
 
 function findOpenDelimiter(parsed: ParsedText, index: number, limit: number = 0): number {
@@ -132,7 +132,7 @@ function findOpenDelimiter(parsed: ParsedText, index: number, limit: number = 0)
     }
     return false;
   }
-  return find(parsed, index, limit, { match });
+  return scan(parsed, index, limit, { match });
 }
 
 /**
@@ -159,7 +159,7 @@ function readElement(parsed: ParsedText, index: number): string {
     }
     return depth < 0;
   }
-  const lastCharIdx = find(parsed, index, parsed.text.length - 1, { match: isEndOfElement });
+  const lastCharIdx = scan(parsed, index, parsed.text.length - 1, { match: isEndOfElement });
   if (lastCharIdx === -1) {
     return parsed.text.slice(index);
   }
@@ -168,7 +168,7 @@ function readElement(parsed: ParsedText, index: number): string {
 
 function skipSpaceAndComments(parsed: ParsedText, index: number): number {
   if (index >= parsed.text.length) return -1;
-  return find(parsed, index, parsed.text.length - 1, { shouldSkip: isSpaceOrComment });
+  return scan(parsed, index, parsed.text.length - 1, { shouldSkip: isSpaceOrComment });
 }
 
 const BODY_FORMS = new Set([
@@ -240,7 +240,7 @@ function findOutermostCloseDelimiter(parsed: ParsedText, index: number, minIndex
     }
     return false;
   }
-  find(parsed, index, minIndex, { match: trackOutermost });
+  scan(parsed, index, minIndex, { match: trackOutermost });
   return candidate;
 }
 
