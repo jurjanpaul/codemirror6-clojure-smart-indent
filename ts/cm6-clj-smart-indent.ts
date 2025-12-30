@@ -1,3 +1,10 @@
+/**
+ * @fileoverview This file implements a smart indentation logic for Clojure code within CodeMirror 6.
+ * It parses the text to identify strings, comments, and escaped characters, then uses this information
+ * to determine the correct indentation level based on Clojure's syntax, especially considering
+ * opening and closing delimiters and special forms.
+ */
+
 import type { IndentContext } from "@codemirror/language"
 import type { Extension, Facet } from "@codemirror/state"
 
@@ -128,6 +135,14 @@ function findOpenDelimiter(parsed: ParsedText, index: number, limit: number = 0)
   return find(parsed, index, limit, { match });
 }
 
+/**
+ * Reads a complete Clojure element starting from the given index.
+ * This function correctly handles nested delimiters to ensure that
+ * a full s-expression or literal is extracted as a single element.
+ * @param parsed The parsed text.
+ * @param index The starting index to read the element from.
+ * @returns The extracted element as a string, or an empty string if the index is out of bounds.
+ */
 function readElement(parsed: ParsedText, index: number): string {
   if (index >= parsed.text.length) return "";
   let depth = 0;
@@ -167,6 +182,14 @@ const BODY_FORMS = new Set([
   "with-precision", "with-redefs", "with-redefs-fn"
 ]);
 
+/**
+ * Determines the indentation for a Clojure form based on its type and arguments.
+ * It considers special forms (e.g., `def`, `fn`, `let`) that have specific indentation rules,
+ * as well as general forms where arguments are aligned.
+ * @param parsed The parsed text.
+ * @param openParenIdx The index of the opening parenthesis of the form.
+ * @returns The column where the current line should be indented.
+ */
 function getFormIndentation(parsed: ParsedText, openParenIdx: number): number {
   const openCol = getColumn(parsed.text, openParenIdx);
   const firstElemIdx = skipSpaceAndComments(parsed, openParenIdx + 1);
@@ -187,6 +210,15 @@ function getFormIndentation(parsed: ParsedText, openParenIdx: number): number {
   return openCol + 1;
 }
 
+/**
+ * Finds the index of the outermost unmatched close delimiter on a given line,
+ * searching backward from the specified index. This is used for dedenting
+ * when a closing delimiter is encountered.
+ * @param parsed The parsed text.
+ * @param index The starting index for the backward search.
+ * @param minIndex The minimum index to search back to, typically the start of the current line.
+ * @returns The index of the outermost close delimiter, or -1 if none is found.
+ */
 function findOutermostCloseDelimiter(parsed: ParsedText, index: number, minIndex: number = 0): number {
   let candidate = -1;
   let depth = 0;
