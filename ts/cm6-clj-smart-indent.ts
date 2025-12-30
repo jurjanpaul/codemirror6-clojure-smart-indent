@@ -1,15 +1,13 @@
 import type { IndentContext } from "@codemirror/language"
 import type { Extension, Facet } from "@codemirror/state"
 
-type Flags = Uint8Array;
-
 const FLAG_ESCAPE = 1;
 const FLAG_COMMENT = 2;
 const FLAG_STRING = 4;
 
 interface ParsedText {
   text: string;
-  flags: Flags;
+  flags: Uint8Array;
 }
 
 function parse(text: string): ParsedText {
@@ -31,7 +29,6 @@ function parse(text: string): ParsedText {
     } else if (inString) {
       if (char === '"') {
         inString = false;
-        flags[i] = FLAG_ESCAPE;
       }
       else {
         flags[i] = FLAG_STRING;
@@ -47,7 +44,7 @@ function parse(text: string): ParsedText {
   return { text, flags }
 }
 
-function hasFlag(flags: Flags, index: number, flag: number): boolean {
+function hasFlag(flags: Uint8Array, index: number, flag: number): boolean {
   return (flags[index] & flag) !== 0;
 }
 
