@@ -101,13 +101,13 @@ function isCloseDelimiter(char: string): boolean {
   return char === ')' || char === ']' || char === '}';
 }
 
-interface FindPredicates {
+interface ScanOptions {
   match?: (char: string, index: number) => boolean;
   shouldSkip?: (parsed: ParsedText, index: number) => boolean;
 }
 
-function scan(parsed: ParsedText, index: number, limit: number, predicates: FindPredicates): number {
-  const { match = () => true, shouldSkip = isIgnored } = predicates;
+function scan(parsed: ParsedText, index: number, limit: number, options: ScanOptions): number {
+  const { match = () => true, shouldSkip = isIgnored } = options;
   const scanForward = index < limit;
   const step = scanForward ? 1 : -1;
   for (let i = index; scanForward ? i <= limit : i >= limit; i += step) {
@@ -270,6 +270,16 @@ function calculateIndentationInner(parsed: ParsedText): number {
   return getIndentationLength(lastSignificantLine);
 }
 
+/**
+ * Calculates the indentation for a given Clojure code prefix.
+ *
+ * This function is primarily used for testing the indentation logic. It takes a string
+ * of Clojure code as input and returns the calculated indentation in columns for the
+ * last line.
+ *
+ * @param prefix The Clojure code prefix to calculate the indentation for.
+ * @returns The calculated indentation in columns.
+ */
 export function calculateIndentation(prefix: string): number {
   if (prefix == "") {
     return 0;
@@ -287,9 +297,34 @@ function smartIndent(context: IndentContext, pos: number): number | null {
 }
 
 /**
- * Initialises the Clojure Smart Indent extension for CodeMirror6.
- * @param indentService @codemirror/language.indentService
- * @returns the CodeMirror6 Clojure Smart Indent extension in the form of an array of extensions
+ * Creates a CodeMirror 6 extension that provides smart indentation for Clojure code.
+ *
+ * This extension uses a parser to analyze the code and determine the correct indentation
+ * level based on Clojure's syntax and conventions. It handles special forms, comments,
+ * strings, and other language features to provide accurate and context-aware indentation.
+ *
+ * @param indentService The `indentService` facet from `@codemirror/language`.
+ * @returns A CodeMirror 6 extension that provides smart indentation for Clojure.
+ *
+ * @example
+ * ```javascript
+ * import { EditorState } from "@codemirror/state";
+ * import { EditorView } from "@codemirror/view";
+ * import { clojure } from "@nextjournal/lang-clojure";
+ * import { indentService } from "@codemirror/language";
+ * import { clojureSmartIndentExtension } from "@jurjanpaul/codemirror6-clojure-smart-indent";
+ *
+ * new EditorView({
+ *   state: EditorState.create({
+ *     doc: "(defn foo [bar]\\n  (println bar))",
+ *     extensions: [
+ *       clojure(),
+ *       clojureSmartIndentExtension(indentService)
+ *     ],
+ *   }),
+ *   parent: document.body,
+ * });
+ * ```
  */
 export function clojureSmartIndentExtension(indentService: Facet<(context: IndentContext, pos: number) => number | null | undefined>): Extension {
   return indentService.of(smartIndent)

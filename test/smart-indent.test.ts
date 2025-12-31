@@ -127,6 +127,20 @@ describe("Clojure Smart Indent", () => {
       assertSmartIndent("  (foo\n    bar)\n  |",
                         "  (foo\n    bar)|");
     });
+
+    it("should dedent to the correct level within a deeply nested form (failing test)", () => {
+      assertSmartIndent(
+        "(a 1\n (b 2\n  (c 3\n   (d 4))\n |))",
+        "(a 1\n (b 2\n  (c 3\n   (d 4)))|)"
+      );
+    });
+
+    it("should dedent to the correct level within a deeply nested form with manual indentation", () => {
+      assertSmartIndent(
+        "(a 1\n           (b 2\n  (c 3\n   (d 4))\n           |))",
+        "(a 1\n           (b 2\n  (c 3\n   (d 4)))|)"
+      );
+    });
   });
 
   describe("Blank Lines and Manual Indentation", () => {
@@ -202,6 +216,16 @@ describe("Clojure Smart Indent", () => {
     it("should align with the start of a reader conditional prefix (#?)", () => {
       assertSmartIndent("(#?(:clj 1 :cljs 2)\n |)",
                         "(#?(:clj 1 :cljs 2)|)");
+    });
+
+    it("should align with the start of a var prefix (#'')", () => {
+      assertSmartIndent("(#'my-var\n |)",
+                        "(#'my-var|)");
+    });
+
+    it("should align with the start of a regex prefix (#\\\")", () => {
+      assertSmartIndent("(#\"my-regex\"\n |)",
+                        "(#\"my-regex\"|)");
     });
   });
 });

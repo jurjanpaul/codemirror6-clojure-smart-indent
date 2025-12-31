@@ -8,7 +8,12 @@
     "clojure",
     "smartindent",
     "codemirror",
-    "codemirror6"
+    "codemirror6",
+    "clojurescript",
+    "editor",
+    "indentation",
+    "code-editor",
+    "extension"
   ],
   "author": "Jurjan-Paul Medema",
   "repository": {
