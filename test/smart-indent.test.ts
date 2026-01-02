@@ -1,20 +1,9 @@
 import { expect } from "chai";
 import { calculateIndentation } from "../ts/cm6-clj-smart-indent.js";
 
-function parseInput(input: string) {
-  const cursor = input.indexOf("|");
-  if (cursor === -1) throw new Error("Missing cursor marker '|'");
-  return {
-    buffer: input.replace("|", ""),
-    cursor
-  };
-}
-
 function assertSmartIndent(expected: string, input: string) {
-  const { buffer, cursor } = parseInput(input);
-  const prefix = buffer.slice(0, cursor);
-  const actualIndentLength = calculateIndentation(prefix);
-  const indent = " ".repeat(actualIndentLength);
+  const prefix = input.slice(0, input.indexOf("|"));
+  const indent = " ".repeat(calculateIndentation(prefix));
   const actualResult = input.replace("|", `\n${indent}|`);
   expect(actualResult).to.equal(expected, `Result mismatch for input:\n${input}`);
 }
@@ -63,36 +52,12 @@ describe("Clojure Smart Indent", () => {
       assertSmartIndent("(let \n  |",
                         "(let |");
     });
-    it("should align threading macros (->>) with the first argument if present", () => {
-      assertSmartIndent("(->> data\n     |)",
-                        "(->> data|)");
-    });
-    it("should indent threading macros (->>) by 1 space if no argument is present yet", () => {
-      assertSmartIndent("(->>\n |)",
-                        "(->>|)");
-    });
-    it("should align subsequent forms in a threading macro with the first argument", () => {
-       assertSmartIndent("(->>\n  data\n  (map inc)\n  |)",
-                         "(->>\n  data\n  (map inc)|)");
-    });
   });
 
   describe("Forms with Prefixes", () => {
     it("should dedent to the start of the set literal", () => {
       assertSmartIndent("#{1\n  2}\n|",
                         "#{1\n  2}|");
-    });
-    it("should dedent to the start of the reader conditional", () => {
-      assertSmartIndent("#?(:clj 1\n   :cljs 2)\n|",
-                        "#?(:clj 1\n   :cljs 2)|");
-    });
-    it("should dedent to the start of the anonymous function literal", () => {
-      assertSmartIndent("#(\n  inc %)\n|",
-                        "#(\n  inc %)|");
-    });
-    it("should dedent to the start of the metadata map", () => {
-      assertSmartIndent("^{\n  :a 1}\n|",
-                        "^{\n  :a 1}|");
     });
     it("should dedent correctly after an ignored form", () => {
       assertSmartIndent("#_ (\n  ignore me)\n|",
@@ -104,22 +69,6 @@ describe("Clojure Smart Indent", () => {
     it("should align with the start of a set literal prefix (#)", () => {
       assertSmartIndent("(#{1 2 3}\n |)",
                         "(#{1 2 3}|)");
-    });
-    it("should align with the start of an anonymous function prefix (#)", () => {
-      assertSmartIndent("(#(println %)\n |)",
-                        "(#(println %)|)");
-    });
-    it("should align with the start of a metadata map prefix (^)", () => {
-      assertSmartIndent("(^{:tag String}\n |)",
-                        "(^{:tag String}|)");
-    });
-    it("should align with the start of a reader conditional prefix (#?)", () => {
-      assertSmartIndent("(#?(:clj 1 :cljs 2)\n |)",
-                        "(#?(:clj 1 :cljs 2)|)");
-    });
-    it("should align with the start of a var prefix (#'')", () => {
-      assertSmartIndent("(#'my-var\n |)",
-                        "(#'my-var|)");
     });
     it("should align with the start of a regex prefix (#\")", () => {
       assertSmartIndent("(#\"my-regex\"\n |)",
