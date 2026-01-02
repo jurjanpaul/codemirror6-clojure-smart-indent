@@ -228,4 +228,18 @@ describe("Clojure Smart Indent", () => {
                         "(#\"my-regex\"|)");
     });
   });
+
+  describe("Empty or Whitespace-only Documents", () => {
+    it("should return 0 indentation for an empty document", () => {
+      assertSmartIndent("\n|", "|");
+    });
+
+    it("should return 0 indentation for a document with only whitespace", () => {
+      assertSmartIndent("   \n|", "   |");
+    });
+
+    it("should return 0 indentation for a document with only newlines", () => {
+      assertSmartIndent("\n\n|", "\n\n|");
+    });
+  });
 });
