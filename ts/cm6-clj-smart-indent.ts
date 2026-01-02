@@ -24,26 +24,26 @@ function flagCommentsAndStrings(text: string): FlaggedText {
   let inComment = false;
   let escaped = false;
   for (let i = 0; i < size; i++) {
-    const char = text[i];
+    const c = text[i];
     if (inComment) {
       flags[i] = FLAG_COMMENT;
-      if (char === '\n') inComment = false;
+      if (c === '\n') inComment = false;
     } else if (escaped) {
       flags[i] = FLAG_ESCAPE;
       escaped = false;
-    } else if (char === '\\') {
+    } else if (c === '\\') {
       escaped = true;
     } else if (inString) {
-      if (char === '"') {
+      if (c === '"') {
         inString = false;
       }
       else {
         flags[i] = FLAG_STRING;
       }
-    } else if (char === '"') {
+    } else if (c === '"') {
       inString = true;
       flags[i] = FLAG_STRING;
-    } else if (char === ';') {
+    } else if (c === ';') {
       inComment = true;
       flags[i] = FLAG_COMMENT;
     }
@@ -93,16 +93,16 @@ function isSpaceOrComment(flaggedText: FlaggedText, i: number): boolean {
   return isWhitespace(flaggedText.text[i]) || inComment(flaggedText, i);
 }
 
-function isOpenDelimiter(char: string): boolean {
-  return char === '(' || char === '[' || char === '{';
+function isOpenDelimiter(c: string): boolean {
+  return c === '(' || c === '[' || c === '{';
 }
 
-function isCloseDelimiter(char: string): boolean {
-  return char === ')' || char === ']' || char === '}';
+function isCloseDelimiter(c: string): boolean {
+  return c === ')' || c === ']' || c === '}';
 }
 
 interface ScanOptions {
-  match?: (char: string, index: number) => boolean;
+  match?: (c: string, index: number) => boolean;
   skip?: (flaggedText: FlaggedText, index: number) => boolean;
 }
 
@@ -125,8 +125,8 @@ function findUnmatchedDelimiterInLine(flaggedText: FlaggedText, index: number, l
   let unclosedOpen = -1;
   let unopenedClose = -1;
   let depth = 0;
-  const matchFn = (char: string, i: number): boolean => {
-    if (isOpenDelimiter(char)) {
+  const matchFn = (c: string, i: number): boolean => {
+    if (isOpenDelimiter(c)) {
       if (depth === 0) {
         unclosedOpen = i;
         return true;
@@ -135,7 +135,7 @@ function findUnmatchedDelimiterInLine(flaggedText: FlaggedText, index: number, l
       if (depth === 0) {
         unopenedClose = -1;
       }
-    } else if (isCloseDelimiter(char)) {
+    } else if (isCloseDelimiter(c)) {
       depth++;
       if (depth === 1) {
         unopenedClose = i;
@@ -158,10 +158,10 @@ function skipSpaceAndComments(flaggedText: FlaggedText, index: number): number {
 function readElement(flaggedText: FlaggedText, index: number): string {
   if (index >= flaggedText.text.length) return "";
   let depth = 0;
-  function isEndOfElement(char: string, i: number): boolean {
-    if (isOpenDelimiter(char)) {
+  function isEndOfElement(c: string, i: number): boolean {
+    if (isOpenDelimiter(c)) {
       depth++;
-    } else if (isCloseDelimiter(char)) {
+    } else if (isCloseDelimiter(c)) {
       depth--;
     }
     if (depth === 0) {
@@ -211,10 +211,10 @@ function getFormIndentation(flaggedText: FlaggedText, openParenIdx: number): num
 
 function findOpenDelimiter(flaggedText: FlaggedText, index: number, limit: number = 0): number {
   let depth = 0;
-  function match(char: string): boolean {
-    if (isCloseDelimiter(char)) {
+  function match(c: string): boolean {
+    if (isCloseDelimiter(c)) {
       depth++;
-    } else if (isOpenDelimiter(char)) {
+    } else if (isOpenDelimiter(c)) {
       if (depth === 0) return true;
       depth--;
     }
@@ -224,11 +224,11 @@ function findOpenDelimiter(flaggedText: FlaggedText, index: number, limit: numbe
 }
 
 function dedent(flaggedText: FlaggedText, index: number): number {
-  return calculateIndentationInner({ text: flaggedText.text.slice(0, index) + "$",
-                                     flags: flaggedText.flags });
+  return calculateIndent({ text: flaggedText.text.slice(0, index) + "$",
+                           flags: flaggedText.flags });
 }
 
-function calculateIndentationInner(flaggedText: FlaggedText): number {
+function calculateIndent(flaggedText: FlaggedText): number {
   const lastSignificantCharIdx = findLastSignificantCharIdx(flaggedText);
   if (lastSignificantCharIdx === -1) {
     return 0;
@@ -236,10 +236,10 @@ function calculateIndentationInner(flaggedText: FlaggedText): number {
   const lastSignificantLineStart = getLineStart(flaggedText.text, lastSignificantCharIdx);
   const unmatchedDelimiterIdx = findUnmatchedDelimiterInLine(flaggedText, lastSignificantCharIdx, lastSignificantLineStart);
   if (unmatchedDelimiterIdx !== -1) {
-    const char = flaggedText.text[unmatchedDelimiterIdx];
-    if (isOpenDelimiter(char)) {
+    const c = flaggedText.text[unmatchedDelimiterIdx];
+    if (isOpenDelimiter(c)) {
       return getFormIndentation(flaggedText, unmatchedDelimiterIdx);
-    } else if (isCloseDelimiter(char)) {
+    } else if (isCloseDelimiter(c)) {
       const matchingOpenIdx = findOpenDelimiter(flaggedText, unmatchedDelimiterIdx - 1);
       if (matchingOpenIdx !== -1) {
         return dedent(flaggedText, matchingOpenIdx);
@@ -268,7 +268,7 @@ export function calculateIndentation(prefix: string): number {
   if (inString(flaggedText, prefix.length - 1)) {
     return 0;
   }
-  return calculateIndentationInner(flaggedText);
+  return calculateIndent(flaggedText);
 }
 
 function smartIndent(context: IndentContext, pos: number): number | null {
