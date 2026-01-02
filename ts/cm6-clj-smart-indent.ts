@@ -76,11 +76,6 @@ function getColumn(text: string, index: number): number {
   return index - getLineStart(text, index);
 }
 
-function getIndentationLength(line: string): number {
-  const match = line.match(/^[ \t]*/);
-  return match ? match[0].length : 0;
-}
-
 function isWhitespace(c: string): boolean {
   return c === " " || c === "," || c === "\n" || c === "\r" || c === "\t";
 }
@@ -117,7 +112,7 @@ function scan(flaggedText: FlaggedText, index: number, limit: number, options: S
   return -1;
 }
 
-function findLastSignificantCharIdx(flaggedText: FlaggedText): number {
+function findLastCodeCharIdx(flaggedText: FlaggedText): number {
   return scan(flaggedText, flaggedText.text.length - 1, 0, { match: notWhitespace });
 }
 
@@ -172,9 +167,6 @@ function readElement(flaggedText: FlaggedText, index: number): string {
     return depth < 0;
   }
   const lastCharIdx = scan(flaggedText, index, flaggedText.text.length - 1, { match: isEndOfElement });
-  if (lastCharIdx === -1) {
-    return flaggedText.text.slice(index);
-  }
   return flaggedText.text.slice(index, lastCharIdx + 1);
 }
 
@@ -229,12 +221,12 @@ function dedent(flaggedText: FlaggedText, index: number): number {
 }
 
 function calculateIndent(flaggedText: FlaggedText): number {
-  const lastSignificantCharIdx = findLastSignificantCharIdx(flaggedText);
-  if (lastSignificantCharIdx === -1) {
+  const lastCodeCharIdx = findLastCodeCharIdx(flaggedText);
+  if (lastCodeCharIdx === -1) {
     return 0;
   }
-  const lastSignificantLineStart = getLineStart(flaggedText.text, lastSignificantCharIdx);
-  const unmatchedDelimiterIdx = findUnmatchedDelimiterInLine(flaggedText, lastSignificantCharIdx, lastSignificantLineStart);
+  const lastCodeLineStart = getLineStart(flaggedText.text, lastCodeCharIdx);
+  const unmatchedDelimiterIdx = findUnmatchedDelimiterInLine(flaggedText, lastCodeCharIdx, lastCodeLineStart);
   if (unmatchedDelimiterIdx !== -1) {
     const c = flaggedText.text[unmatchedDelimiterIdx];
     if (isOpenDelimiter(c)) {
@@ -246,8 +238,8 @@ function calculateIndent(flaggedText: FlaggedText): number {
       }
     }
   }
-  const lastSignificantLine = flaggedText.text.slice(lastSignificantLineStart, lastSignificantCharIdx + 1);
-  return getIndentationLength(lastSignificantLine);
+  const lastCodeLine = flaggedText.text.slice(lastCodeLineStart, lastCodeCharIdx + 1);
+  return lastCodeLine.match(/^\s*/)![0].length;
 }
 
 /**
