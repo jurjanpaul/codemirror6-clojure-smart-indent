@@ -54,28 +54,6 @@ describe("Clojure Smart Indent", () => {
     });
   });
 
-  describe("Forms with Prefixes", () => {
-    it("should dedent to the start of the set literal", () => {
-      assertSmartIndent("#{1\n  2}\n|",
-                        "#{1\n  2}|");
-    });
-    it("should dedent correctly after an ignored form", () => {
-      assertSmartIndent("#_ (\n  ignore me)\n|",
-                        "#_ (\n  ignore me)|");
-    });
-  });
-
-  describe("Prefixed Forms as First Elements", () => {
-    it("should align with the start of a set literal prefix (#)", () => {
-      assertSmartIndent("(#{1 2 3}\n |)",
-                        "(#{1 2 3}|)");
-    });
-    it("should align with the start of a regex prefix (#\")", () => {
-      assertSmartIndent("(#\"my-regex\"\n |)",
-                        "(#\"my-regex\"|)");
-    });
-  });
-
   describe("Context Sensitivity (Strings, Comments, Literals)", () => {
     it("should ignore parentheses inside strings", () => {
       assertSmartIndent("(println \"ignore )\"\n         |)",
@@ -104,6 +82,29 @@ describe("Clojure Smart Indent", () => {
     it("should ignore comments when searching for the first argument alignment", () => {
       assertSmartIndent("(foo ; comment\n |)",
                         "(foo ; comment|)");
+    });
+  });
+
+  describe("Blank Lines and Manual Indentation", () => {
+    it("should preserve indentation of the previous line", () => {
+      assertSmartIndent("  (foo)\n  |",
+                        "  (foo)|");
+    });
+    it("should preserve manual indentation from the previous line", () => {
+      assertSmartIndent("(foo\n      bar\n      |)",
+                        "(foo\n      bar|)");
+    });
+    it("should use indentation of the last significant line if the current line is blank", () => {
+      assertSmartIndent("(let [x 1]\n\n  |",
+                        "(let [x 1]\n|");
+    });
+    it("should use indentation of the last significant line if current line has only whitespace", () => {
+      assertSmartIndent('(let [x 1]\n\n  |xyz',
+                        '(let [x 1]\n|xyz');
+    });
+    it("should respect manual indentation even across blank lines within a form", () => {
+      assertSmartIndent("(defn foo [x]\n    (manual-indent)\n\n    |)",
+                        "(defn foo [x]\n    (manual-indent)\n|)");
     });
   });
 
@@ -138,26 +139,25 @@ describe("Clojure Smart Indent", () => {
     });
   });
 
-  describe("Blank Lines and Manual Indentation", () => {
-    it("should preserve indentation of the previous line", () => {
-      assertSmartIndent("  (foo)\n  |",
-                        "  (foo)|");
+  describe("Forms with Prefixes", () => {
+    it("should dedent to the start of the set literal", () => {
+      assertSmartIndent("  #{1\n  2}\n  |",
+                        "  #{1\n  2}|");
     });
-    it("should preserve manual indentation from the previous line", () => {
-      assertSmartIndent("(foo\n      bar\n      |)",
-                        "(foo\n      bar|)");
+    it("should dedent correctly after an ignored form", () => {
+      assertSmartIndent("  #_ (\n  ignore me)\n  |",
+                        "  #_ (\n  ignore me)|");
     });
-    it("should use indentation of the last significant line if the current line is blank", () => {
-      assertSmartIndent("(let [x 1]\n\n  |",
-                        "(let [x 1]\n|");
+  });
+
+  describe("Prefixed Forms as First Elements", () => {
+    it("should align with the start of a set literal prefix (#)", () => {
+      assertSmartIndent("  (#{1 2 3}\n   |)",
+                        "  (#{1 2 3}|)");
     });
-    it("should use indentation of the last significant line if current line has only whitespace", () => {
-      assertSmartIndent('(let [x 1]\n\n  |xyz',
-                        '(let [x 1]\n|xyz');
-    });
-    it("should respect manual indentation even across blank lines within a form", () => {
-      assertSmartIndent("(defn foo [x]\n    (manual-indent)\n\n    |)",
-                        "(defn foo [x]\n    (manual-indent)\n|)");
+    it("should align with the start of a regex prefix (#\")", () => {
+      assertSmartIndent("  (#\"my-regex\"\n   |)",
+                        "  (#\"my-regex\"|)");
     });
   });
 });
