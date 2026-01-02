@@ -12,12 +12,12 @@ const FLAG_ESCAPE = 1;
 const FLAG_COMMENT = 2;
 const FLAG_STRING = 4;
 
-interface ParsedText {
+interface FlaggedText {
   text: string;
   flags: Uint8Array;
 }
 
-function parse(text: string): ParsedText {
+function flagCommentsAndStrings(text: string): FlaggedText {
   const size = text.length;
   const flags = new Uint8Array(size);
   let inString = false;
@@ -55,16 +55,16 @@ function hasFlag(flags: Uint8Array, index: number, flag: number): boolean {
   return (flags[index] & flag) !== 0;
 }
 
-function isIgnored(parsed: ParsedText, index: number): boolean {
-  return hasFlag(parsed.flags, index, FLAG_STRING | FLAG_COMMENT | FLAG_ESCAPE);
+function isIgnored(flaggedText: FlaggedText, index: number): boolean {
+  return hasFlag(flaggedText.flags, index, FLAG_STRING | FLAG_COMMENT | FLAG_ESCAPE);
 }
 
-function inString(parsed: ParsedText, index: number): boolean {
-  return hasFlag(parsed.flags, index, FLAG_STRING);
+function inString(flaggedText: FlaggedText, index: number): boolean {
+  return hasFlag(flaggedText.flags, index, FLAG_STRING);
 }
 
-function inComment(parsed: ParsedText, index: number): boolean {
-  return hasFlag(parsed.flags, index, FLAG_COMMENT);
+function inComment(flaggedText: FlaggedText, index: number): boolean {
+  return hasFlag(flaggedText.flags, index, FLAG_COMMENT);
 }
 
 function getLineStart(text: string, index: number): number {
@@ -89,8 +89,8 @@ function notWhitespace(c: string): boolean {
   return !isWhitespace(c);
 }
 
-function isSpaceOrComment(parsed: ParsedText, i: number): boolean {
-  return isWhitespace(parsed.text[i]) || inComment(parsed, i);
+function isSpaceOrComment(flaggedText: FlaggedText, i: number): boolean {
+  return isWhitespace(flaggedText.text[i]) || inComment(flaggedText, i);
 }
 
 function isOpenDelimiter(char: string): boolean {
@@ -103,48 +103,60 @@ function isCloseDelimiter(char: string): boolean {
 
 interface ScanOptions {
   match?: (char: string, index: number) => boolean;
-  shouldSkip?: (parsed: ParsedText, index: number) => boolean;
+  skip?: (flaggedText: FlaggedText, index: number) => boolean;
 }
 
-function scan(parsed: ParsedText, index: number, limit: number, options: ScanOptions): number {
-  const { match = () => true, shouldSkip = isIgnored } = options;
+function scan(flaggedText: FlaggedText, index: number, limit: number, options: ScanOptions): number {
+  const { match = () => true, skip = isIgnored } = options;
   const scanForward = index < limit;
   const step = scanForward ? 1 : -1;
   for (let i = index; scanForward ? i <= limit : i >= limit; i += step) {
-    if (shouldSkip(parsed, i)) continue;
-    if (match(parsed.text[i], i)) return i;
+    if (skip(flaggedText, i)) continue;
+    if (match(flaggedText.text[i], i)) return i;
   }
   return -1;
 }
 
-function findLastSignificantCharIdx(parsed: ParsedText): number {
-  return scan(parsed, parsed.text.length - 1, 0, { match: notWhitespace });
+function findLastSignificantCharIdx(flaggedText: FlaggedText): number {
+  return scan(flaggedText, flaggedText.text.length - 1, 0, { match: notWhitespace });
 }
 
-function findOpenDelimiter(parsed: ParsedText, index: number, limit: number = 0): number {
+function findUnmatchedDelimiterInLine(flaggedText: FlaggedText, index: number, limit: number): number {
+  let unclosedOpen = -1;
+  let unopenedClose = -1;
   let depth = 0;
-  function match(char: string): boolean {
-    if (isCloseDelimiter(char)) {
-      depth++;
-    } else if (isOpenDelimiter(char)) {
-      if (depth === 0) return true;
+  const matchFn = (char: string, i: number): boolean => {
+    if (isOpenDelimiter(char)) {
+      if (depth === 0) {
+        unclosedOpen = i;
+        return true;
+      }
       depth--;
+      if (depth === 0) {
+        unopenedClose = -1;
+      }
+    } else if (isCloseDelimiter(char)) {
+      depth++;
+      if (depth === 1) {
+        unopenedClose = i;
+      }
     }
     return false;
+  };
+  if (scan(flaggedText, index, limit, { match: matchFn }) !== -1) {
+    return unclosedOpen;
+  } else {
+    return unopenedClose;
   }
-  return scan(parsed, index, limit, { match });
 }
 
-/**
- * Reads a complete Clojure element starting from the given index.
- * This function correctly handles nested delimiters to ensure that
- * a full s-expression or literal is extracted as a single element.
- * @param parsed The parsed text.
- * @param index The starting index to read the element from.
- * @returns The extracted element as a string, or an empty string if the index is out of bounds.
- */
-function readElement(parsed: ParsedText, index: number): string {
-  if (index >= parsed.text.length) return "";
+function skipSpaceAndComments(flaggedText: FlaggedText, index: number): number {
+  if (index >= flaggedText.text.length) return -1;
+  return scan(flaggedText, index, flaggedText.text.length - 1, { skip: isSpaceOrComment });
+}
+
+function readElement(flaggedText: FlaggedText, index: number): string {
+  if (index >= flaggedText.text.length) return "";
   let depth = 0;
   function isEndOfElement(char: string, i: number): boolean {
     if (isOpenDelimiter(char)) {
@@ -153,22 +165,17 @@ function readElement(parsed: ParsedText, index: number): string {
       depth--;
     }
     if (depth === 0) {
-      if (i === parsed.text.length - 1 || isWhitespace(parsed.text[i + 1])) {
+      if (i === flaggedText.text.length - 1 || isWhitespace(flaggedText.text[i + 1])) {
         return true;
       }
     }
     return depth < 0;
   }
-  const lastCharIdx = scan(parsed, index, parsed.text.length - 1, { match: isEndOfElement });
+  const lastCharIdx = scan(flaggedText, index, flaggedText.text.length - 1, { match: isEndOfElement });
   if (lastCharIdx === -1) {
-    return parsed.text.slice(index);
+    return flaggedText.text.slice(index);
   }
-  return parsed.text.slice(index, lastCharIdx + 1);
-}
-
-function skipSpaceAndComments(parsed: ParsedText, index: number): number {
-  if (index >= parsed.text.length) return -1;
-  return scan(parsed, index, parsed.text.length - 1, { shouldSkip: isSpaceOrComment });
+  return flaggedText.text.slice(index, lastCharIdx + 1);
 }
 
 const BODY_FORMS = new Set([
@@ -182,91 +189,64 @@ const BODY_FORMS = new Set([
   "with-precision", "with-redefs", "with-redefs-fn"
 ]);
 
-/**
- * Determines the indentation for a Clojure form based on its type and arguments.
- * It considers special forms (e.g., `def`, `fn`, `let`) that have specific indentation rules,
- * as well as general forms where arguments are aligned.
- * @param parsed The parsed text.
- * @param openParenIdx The index of the opening parenthesis of the form.
- * @returns The column where the current line should be indented.
- */
-function getFormIndentation(parsed: ParsedText, openParenIdx: number): number {
-  const openCol = getColumn(parsed.text, openParenIdx);
-  const firstElemIdx = skipSpaceAndComments(parsed, openParenIdx + 1);
+function getFormIndentation(flaggedText: FlaggedText, openParenIdx: number): number {
+  const openCol = getColumn(flaggedText.text, openParenIdx);
+  const firstElemIdx = skipSpaceAndComments(flaggedText, openParenIdx + 1);
   if (firstElemIdx === -1) return openCol + 1;
-  const element = readElement(parsed, firstElemIdx);
+  const element = readElement(flaggedText, firstElemIdx);
   const firstElemEnd = firstElemIdx + element.length;
   if (BODY_FORMS.has(element)) {
     return openCol + 2;
   }
-  const firstArgIdx = skipSpaceAndComments(parsed, firstElemEnd);
+  const firstArgIdx = skipSpaceAndComments(flaggedText, firstElemEnd);
   if (firstArgIdx !== -1) {
-    const firstArgLineStart = getLineStart(parsed.text, firstArgIdx);
-    const lineStart = getLineStart(parsed.text, openParenIdx);
+    const firstArgLineStart = getLineStart(flaggedText.text, firstArgIdx);
+    const lineStart = getLineStart(flaggedText.text, openParenIdx);
     if (firstArgLineStart === lineStart) {
-      return getColumn(parsed.text, firstArgIdx);
+      return getColumn(flaggedText.text, firstArgIdx);
     }
   }
   return openCol + 1;
 }
 
-/**
- * Finds the index of the outermost unmatched close delimiter on a given line,
- * searching backward from the specified index. This is used for dedenting
- * when a closing delimiter is encountered.
- * @param parsed The parsed text.
- * @param index The starting index for the backward search.
- * @param minIndex The minimum index to search back to, typically the start of the current line.
- * @returns The index of the outermost close delimiter, or -1 if none is found.
- */
-function findOutermostCloseDelimiter(parsed: ParsedText, index: number, minIndex: number = 0): number {
-  let candidate = -1;
+function findOpenDelimiter(flaggedText: FlaggedText, index: number, limit: number = 0): number {
   let depth = 0;
-  function trackOutermost(char: string, i: number): boolean {
+  function match(char: string): boolean {
     if (isCloseDelimiter(char)) {
       depth++;
-      // We found a closing delimiter that might be the outermost one on this line.
-      // If depth becomes 1, it means this delimiter is not matched by any following (to the right) opening delimiter we've seen so far.
-      if (depth === 1) {
-        candidate = i;
-      }
-    } else if (isOpenDelimiter(char) && depth > 0) {
+    } else if (isOpenDelimiter(char)) {
+      if (depth === 0) return true;
       depth--;
-      // If depth returns to 0, the candidate we were tracking was just matched by this opening delimiter.
-      // So it wasn't the outermost unmatched delimiter after all.
-      if (depth === 0) {
-        candidate = -1;
-      }
     }
     return false;
   }
-  scan(parsed, index, minIndex, { match: trackOutermost });
-  return candidate;
+  return scan(flaggedText, index, limit, { match });
 }
 
-function dedent(parsed: ParsedText, index: number): number {
-  return calculateIndentationInner({ text: parsed.text.slice(0, index) + "$",
-                                     flags: parsed.flags });
+function dedent(flaggedText: FlaggedText, index: number): number {
+  return calculateIndentationInner({ text: flaggedText.text.slice(0, index) + "$",
+                                     flags: flaggedText.flags });
 }
 
-function calculateIndentationInner(parsed: ParsedText): number {
-  let lastSignificantCharIdx = findLastSignificantCharIdx(parsed);
+function calculateIndentationInner(flaggedText: FlaggedText): number {
+  const lastSignificantCharIdx = findLastSignificantCharIdx(flaggedText);
   if (lastSignificantCharIdx === -1) {
     return 0;
   }
-  const lastSignificantLineStart = getLineStart(parsed.text, lastSignificantCharIdx);
-  const openParenIdx = findOpenDelimiter(parsed, lastSignificantCharIdx, lastSignificantLineStart);
-  if (openParenIdx !== -1) {
-    return getFormIndentation(parsed, openParenIdx);
-  }
-  const closeDelimiterIdx = findOutermostCloseDelimiter(parsed, lastSignificantCharIdx, lastSignificantLineStart);
-  if (closeDelimiterIdx !== -1) {
-    const matchingOpenIdx = findOpenDelimiter(parsed, closeDelimiterIdx - 1);
-    if (matchingOpenIdx !== -1) {
-      return dedent(parsed, matchingOpenIdx);
+  const lastSignificantLineStart = getLineStart(flaggedText.text, lastSignificantCharIdx);
+  const unmatchedDelimiterIdx = findUnmatchedDelimiterInLine(flaggedText, lastSignificantCharIdx, lastSignificantLineStart);
+  if (unmatchedDelimiterIdx !== -1) {
+    const char = flaggedText.text[unmatchedDelimiterIdx];
+    if (isOpenDelimiter(char)) {
+      return getFormIndentation(flaggedText, unmatchedDelimiterIdx);
+    } else if (isCloseDelimiter(char)) {
+      const matchingOpenIdx = findOpenDelimiter(flaggedText, unmatchedDelimiterIdx - 1);
+      if (matchingOpenIdx !== -1) {
+        return dedent(flaggedText, matchingOpenIdx);
+      }
     }
   }
-  const lastSignificantLine = parsed.text.slice(lastSignificantLineStart, lastSignificantCharIdx + 1);
+  const lastSignificantLine = flaggedText.text.slice(lastSignificantLineStart, lastSignificantCharIdx + 1);
   return getIndentationLength(lastSignificantLine);
 }
 
@@ -275,7 +255,7 @@ function calculateIndentationInner(parsed: ParsedText): number {
  *
  * This function is primarily used for testing the indentation logic. It takes a string
  * of Clojure code as input and returns the calculated indentation in columns for the
- * last line.
+ * new line.
  *
  * @param prefix The Clojure code prefix to calculate the indentation for.
  * @returns The calculated indentation in columns.
@@ -284,11 +264,11 @@ export function calculateIndentation(prefix: string): number {
   if (prefix == "") {
     return 0;
   }
-  const parsed = parse(prefix);
-  if (inString(parsed, prefix.length - 1)) {
+  const flaggedText = flagCommentsAndStrings(prefix);
+  if (inString(flaggedText, prefix.length - 1)) {
     return 0;
   }
-  return calculateIndentationInner(parsed);
+  return calculateIndentationInner(flaggedText);
 }
 
 function smartIndent(context: IndentContext, pos: number): number | null {
