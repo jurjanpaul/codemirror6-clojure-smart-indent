@@ -1,5 +1,7 @@
 # codemirror6-clojure-smart-indent
 
+<span><a href="https://www.npmjs.com/package/@jurjanpaul/codemirror6-clojure-smart-indent" title="NPM version badge"><img src="https://img.shields.io/npm/v/@jurjanpaul/codemirror6-clojure-smart-indent?color=blue" alt="NPM version badge" /></a></span>
+
 Clojure Smart Indentation extension for [CodeMirror 6](https://codemirror.net/).
 
 The indentation follows the [Clojure Styleguide](https://github.com/bbatsov/clojure-style-guide) in case the last line of code before the cursor contains any unmatched open or close delimiter character, i.e. `(`, `[`, `{`, `}`, `]` or `)`. Otherwise, the current (custom) indentation is followed. Comments are skipped and no smart indentation is applied within strings.
