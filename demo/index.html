@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Clojure Smart Indent Demo</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #editor { border: 1px solid #ccc; height: 400px; }
+    .header { display: flex; justify-content: space-between; align-items: center; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "codemirror": "https://cdn.jsdelivr.net/npm/codemirror@6.0.1/dist/index.js",
+      "@codemirror/commands": "https://cdn.jsdelivr.net/npm/@codemirror/commands@6.8.0/dist/index.js",
+      "@codemirror/search": "https://cdn.jsdelivr.net/npm/@codemirror/search@6.5.8/dist/index.js",
+      "@codemirror/autocomplete": "https://cdn.jsdelivr.net/npm/@codemirror/autocomplete@6.18.3/dist/index.js",
+      "@codemirror/lint": "https://cdn.jsdelivr.net/npm/@codemirror/lint@6.8.4/dist/index.js",
+      "crelt": "https://cdn.jsdelivr.net/npm/crelt@1.0.6/index.js",
+      "@nextjournal/lang-clojure": "https://cdn.jsdelivr.net/npm/@nextjournal/lang-clojure@1.0.0/dist/index.js",
+      "@nextjournal/lezer-clojure": "https://cdn.jsdelivr.net/npm/@nextjournal/lezer-clojure@1.0.0/dist/index.es.js",
+      "@lezer/highlight": "https://cdn.jsdelivr.net/npm/@lezer/highlight@1.2.1/dist/index.js",
+      "@lezer/lr": "https://cdn.jsdelivr.net/npm/@lezer/lr@1.4.2/dist/index.js",
+      "@lezer/common": "https://cdn.jsdelivr.net/npm/@lezer/common@1.2.3/dist/index.js",
+      "@codemirror/commands": "https://cdn.jsdelivr.net/npm/@codemirror/commands@6.7.1/dist/index.js",
+      "@codemirror/language": "https://cdn.jsdelivr.net/npm/@codemirror/language@6.10.8/dist/index.js",
+      "@codemirror/lint": "https://cdn.jsdelivr.net/npm/@codemirror/lint@6.8.4/dist/index.js",
+      "@marijn/find-cluster-break": "https://cdn.jsdelivr.net/npm/@marijn/find-cluster-break@1.0.2",
+      "@codemirror/state": "https://cdn.jsdelivr.net/npm/@codemirror/state@6.5.2/dist/index.js",
+      "@codemirror/view": "https://cdn.jsdelivr.net/npm/@codemirror/view@6.35.0/dist/index.js",
+      "@codemirror/merge": "https://cdn.jsdelivr.net/npm/@codemirror/merge@6.7.4/dist/index.js",
+      "style-mod": "https://cdn.jsdelivr.net/npm/style-mod@4.1.2/src/style-mod.js",
+      "w3c-keyname": "https://cdn.jsdelivr.net/npm/w3c-keyname@2.2.8/index.js",
+      "@jurjanpaul/codemirror6-parinfer": "https://cdn.jsdelivr.net/npm/@jurjanpaul/codemirror6-parinfer@0.1.3/dist/cm6-parinfer.min.js",
+      "@jurjanpaul/codemirror6-clojure-smart-indent": "../dist/cm6-clj-smart-indent.js"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as codemirror from 'codemirror';
+    import * as cm_commands from '@codemirror/commands';
+    import * as cm_language from '@codemirror/language';
+    import * as cm_lint from '@codemirror/lint';
+    import * as cm_view from '@codemirror/view';
+    import * as cm_state from '@codemirror/state';
+    import * as cm_merge from '@codemirror/merge';
+    import * as lang_clojure from '@nextjournal/lang-clojure'
+    import * as codemirror6_parinfer from '@jurjanpaul/codemirror6-parinfer'
+    import * as codemirror6_clojure_smart_indent from '@jurjanpaul/codemirror6-clojure-smart-indent'
+    globalThis.codemirror = codemirror;
+    globalThis.cm_commands = cm_commands;
+    globalThis.cm_language = cm_language;
+    globalThis.cm_lint = cm_lint;
+    globalThis.cm_state = cm_state;
+    globalThis.cm_view = cm_view;
+    globalThis.cm_merge = cm_merge;
+    globalThis.lang_clojure = lang_clojure;
+    globalThis.codemirror6_parinfer = codemirror6_parinfer;
+    globalThis.codemirror6_clojure_smart_indent = codemirror6_clojure_smart_indent;
+  </script>
+  <script>
+    function initialize() {
+      console.log("initializing")
+      const initialState = cm_state.EditorState.create({
+        doc: `(defn hello [name]\n  (println "Hello," name))`,
+        extensions: [
+          cm_language.indentUnit.of(" "),
+          codemirror.basicSetup,
+          lang_clojure.clojure(),
+          codemirror6_parinfer.parinferExtension(),
+          codemirror6_clojure_smart_indent.clojureSmartIndentExtension(cm_language.indentService)
+        ]
+      })
+      const view = new cm_view.EditorView({
+        state: initialState,
+        parent: document.getElementById("editor")
+      })
+    }
+    window.onload = initialize;
+  </script>
+</head>
+<body>
+  <div class="header">
+    <h1>Clojure Smart Indent Demo</h1>
+  </div>
+  <div id="editor"></div>
+</body>
+</html>
