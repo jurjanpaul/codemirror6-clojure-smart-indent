@@ -35,7 +35,10 @@ Note the need to pass in the `indentService` (to prevent ending up with separate
 
 ## Demo
 
-A demo editor is provided in `demo/index.html`.
+A demo editor is provided in `demo/index.html`. (Run `npm run build` first.)
+
+Alternatively, see it in action in the [Away from Preferred Editor ClojureScript Playground](https://jurjanpaul.github.io/ape-cljs-playground/)
+or in [the demo page for codemirror6-parinfer](https://jurjanpaul.github.io/codemirror6-parinfer/).
 
 ## Motivation
 
