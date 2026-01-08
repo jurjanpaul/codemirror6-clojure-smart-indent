@@ -1,6 +1,6 @@
 {
   "name": "@jurjanpaul/codemirror6-clojure-smart-indent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Clojure Smart Indent extension for CodeMirror 6",
   "license": "MIT",
   "type": "module",
