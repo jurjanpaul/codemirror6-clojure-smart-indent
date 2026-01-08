@@ -181,21 +181,23 @@ const BODY_FORMS = new Set([
   "with-precision", "with-redefs", "with-redefs-fn"
 ]);
 
-function getFormIndentation(flaggedText: FlaggedText, openParenIdx: number): number {
+function formIndentation(flaggedText: FlaggedText, openParenIdx: number): number {
   const openCol = getColumn(flaggedText.text, openParenIdx);
-  const firstElemIdx = skipSpaceAndComments(flaggedText, openParenIdx + 1);
-  if (firstElemIdx === -1) return openCol + 1;
-  const element = readElement(flaggedText, firstElemIdx);
-  const firstElemEnd = firstElemIdx + element.length;
-  if (BODY_FORMS.has(element)) {
-    return openCol + 2;
-  }
-  const firstArgIdx = skipSpaceAndComments(flaggedText, firstElemEnd);
-  if (firstArgIdx !== -1) {
-    const firstArgLineStart = getLineStart(flaggedText.text, firstArgIdx);
-    const lineStart = getLineStart(flaggedText.text, openParenIdx);
-    if (firstArgLineStart === lineStart) {
-      return getColumn(flaggedText.text, firstArgIdx);
+  if (flaggedText.text[openParenIdx] === '(') {
+    const firstElemIdx = skipSpaceAndComments(flaggedText, openParenIdx + 1);
+    if (firstElemIdx === -1) return openCol + 1;
+    const element = readElement(flaggedText, firstElemIdx);
+    const firstElemEnd = firstElemIdx + element.length;
+    if (BODY_FORMS.has(element)) {
+      return openCol + 2;
+    }
+    const firstArgIdx = skipSpaceAndComments(flaggedText, firstElemEnd);
+    if (firstArgIdx !== -1) {
+      const firstArgLineStart = getLineStart(flaggedText.text, firstArgIdx);
+      const lineStart = getLineStart(flaggedText.text, openParenIdx);
+      if (firstArgLineStart === lineStart) {
+        return getColumn(flaggedText.text, firstArgIdx);
+      }
     }
   }
   return openCol + 1;
@@ -230,7 +232,7 @@ function calculateIndent(flaggedText: FlaggedText): number {
   if (unmatchedDelimiterIdx !== -1) {
     const c = flaggedText.text[unmatchedDelimiterIdx];
     if (isOpenDelimiter(c)) {
-      return getFormIndentation(flaggedText, unmatchedDelimiterIdx);
+      return formIndentation(flaggedText, unmatchedDelimiterIdx);
     } else if (isCloseDelimiter(c)) {
       const matchingOpenIdx = findOpenDelimiter(flaggedText, unmatchedDelimiterIdx - 1);
       if (matchingOpenIdx !== -1) {

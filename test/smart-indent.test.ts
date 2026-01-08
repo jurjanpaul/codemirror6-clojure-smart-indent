@@ -34,8 +34,12 @@ describe("Clojure Smart Indent", () => {
                         "(foo|)");
     });
     it("should indent vector elements by 1 space", () => {
-      assertSmartIndent("[foo \n |]",
-                        "[foo |]");
+      assertSmartIndent("  [foo \n   |]",
+                        "  [foo |]");
+    });
+    it("should indent map elements by 1 space", () => {
+      assertSmartIndent("  {:x 3\n   |}",
+                        "  {:x 3|}");
     });
     it("should handle nested function calls", () => {
       assertSmartIndent("(foo [x]\n  (bar [y \n        |]))",
